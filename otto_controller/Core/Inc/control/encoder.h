@@ -3,54 +3,24 @@
 
 #include "main.h"
 
-typedef struct Encoder {
+typedef struct {
   TIM_HandleTypeDef *timer;
   uint32_t previous_millis;
   uint32_t current_millis;
   int32_t ticks;  //if negative the wheel is going backwards
-  float_t wheel_circumference;
   int32_t ticks_per_revolution;
-};
+  float wheel_circumference;
+} Encoder;
 
-void Setup() {
-  HAL_TIM_Encoder_Start(timer_, TIM_CHANNEL_ALL);
-  this->ResetCount();
-  this->previous_millis_ = 0;
-  this->current_millis_ = HAL_GetTick();
-}
+void encoder_init(Encoder *encoders);
+void encoder_update(Encoder *encoder);
+float encoder_linear_velocity(Encoder *encoder);
 
-void ResetCount() {
-  //set counter to half its maximum value
-  __HAL_TIM_SET_COUNTER(timer_, (timer_->Init.Period / 2));
-}
+void encoder_count_reset(Encoder *encoder);
+int encoder_count_get(Encoder *encoder);
 
-int GetCount() {
-  int count = ((int) __HAL_TIM_GET_COUNTER(this->timer_)
-               - ((this->timer_->Init.Period) / 2));
-  return count;
-}
-
-void UpdateValues() {
-  this->previous_millis_ = this->current_millis_;
-  this->current_millis_ = HAL_GetTick();
-  this->ticks_ = this->GetCount();
-  this->ResetCount();
-}
-
-float GetMeters() {
-  float meters = ((float) this->ticks_ * this->wheel_circumference_)
-                 / ticks_per_revolution_;
-  return meters;
-}
-
-float GetLinearVelocity() {
-  this->UpdateValues();
-  float meters = this->GetMeters();
-  float deltaTime = this->current_millis_ - this->previous_millis_;
-  if (deltaTime == 0)
-    return 0;
-  float linear_velocity = (meters / (deltaTime / 1000));
-  return linear_velocity;
-}
+inline float meters_from_ticks(float encoder_ticks,
+                               float wheel_circumference,
+                               float ticks_per_revolution);
 
 #endif

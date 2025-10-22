@@ -37,6 +37,7 @@
 
 // NOTE(lb): couldn't get it to link in the final executable
 #include "./control/motor_controller.c"
+#include "./control/encoder.c"
 
 /* USER CODE END Includes */
 
@@ -59,8 +60,10 @@
 /* USER CODE BEGIN PV */
 
 //Odometry
-Encoder encoder_left = {0};
-Encoder encoder_right = {0};
+static Encoder encoders[2] = {{0}, {0}};
+Encoder *encoder_right = &encoders[0];
+Encoder *encoder_left = &encoders[1];
+
 Odometry odom;
 
 //PID
@@ -69,7 +72,7 @@ Pid right_pid;
 Pid cross_pid;
 
 //MotorController
-static MotorController motors[] = {
+static MotorController motors[2] = {
   {
     // Right motor
     .sleep_gpio_port = sleep1_GPIO_Port,
@@ -165,19 +168,17 @@ int main(void) {
     }
   }
 
-  left_encoder.timer = &htim2;
-  left_encoder.wheel_circumference = config_msg.left_wheel_circumference;
-  left_encoder.ticks_per_revolution = config_msg.ticks_per_revolution;
+  encoder_left->timer = &htim2;
+  encoder_left->wheel_circumference = config_msg.left_wheel_circumference;
+  encoder_left->ticks_per_revolution = config_msg.ticks_per_revolution;
 
-  right_encoder.timer = &htim5;
-  right_encoder.wheel_circumference = config_msg.right_wheel_circumference;
-  right_encoder.ticks_per_revolution = config_msg.ticks_per_revolution;
+  encoder_right->timer = &htim5;
+  encoder_right->wheel_circumference = config_msg.right_wheel_circumference;
+  encoder_right->ticks_per_revolution = config_msg.ticks_per_revolution;
 
   odom = Odometry(config_msg.baseline);
 
-  left_encoder.Setup();
-  right_encoder.Setup();
-
+  encoder_init(encoders);
   motorcontroller_init(motors);
 
   //right and left motors have the same parameters
@@ -290,14 +291,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   //TIMER 100Hz PID control
 
   //accumulate ticks for transmission
-  left_ticks += left_encoder.GetCount();
-  right_ticks += right_encoder.GetCount();
+  left_ticks += encoder_count_get(encoder_left);
+  right_ticks += encoder_count_get(encoder_right);
 
   //PID control
-  float left_velocity = left_encoder.GetLinearVelocity();
+  encoder_update(encoder_left);
+  float left_velocity = encoder_linear_velocity(encoder_left);
   int left_dutycycle = left_pid.Update(left_velocity);
 
-  float right_velocity = right_encoder.GetLinearVelocity();
+  encoder_update(encoder_right);
+  float right_velocity = encoder_linear_velocity(encoder_right);
   int right_dutycycle = right_pid.Update(right_velocity);
 
   float difference = left_velocity - right_velocity;
@@ -346,8 +349,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
    * Manage new transmission
    */
 
-  int32_t left_ticks_tx = left_ticks + left_encoder.GetCount();
-  int32_t right_ticks_tx = right_ticks + right_encoder.GetCount();
+  int32_t left_ticks_tx = left_ticks + encoder_count_get(encoder_left);
+  int32_t right_ticks_tx = right_ticks + encoder_count_get(encoder_right);
 
   status_msg.left_ticks = left_ticks_tx;
   status_msg.right_ticks = right_ticks_tx;
