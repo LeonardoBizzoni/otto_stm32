@@ -4,7 +4,7 @@
 #include "main.h"
 
 // TODO(lb): reorder after C++ removal to avoid padding
-typedef struct MotorController {
+typedef struct {
   GPIO_TypeDef *sleep_gpio_port;
   uint16_t sleep_pin;
   GPIO_TypeDef *dir_gpio_port;

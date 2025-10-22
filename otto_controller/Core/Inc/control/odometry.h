@@ -21,10 +21,7 @@ typedef struct {
 } Odometry;
 
 void odometry_setpoint_from_cmdvel(Odometry *odom, float linear_vel,
-                                   float angular_vel) {
-  odom->setpoint.left = linear_vel - (odom->baseline * angular_vel) / 2;
-  odom->setpoint.right = linear_vel + (odom->baseline * angular_vel) / 2;
-}
+                                   float angular_vel);
 
 #if 0
 class Odometry {

@@ -19,8 +19,8 @@ float encoder_linear_velocity(Encoder *encoder);
 void encoder_count_reset(Encoder *encoder);
 int encoder_count_get(Encoder *encoder);
 
-inline float meters_from_ticks(float encoder_ticks,
-                               float wheel_circumference,
-                               float ticks_per_revolution);
+float meters_from_ticks(float encoder_ticks,
+                        float wheel_circumference,
+                        float ticks_per_revolution);
 
 #endif

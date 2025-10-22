@@ -35,10 +35,6 @@
 
 #include "communication/otto_messages.h"
 
-// NOTE(lb): couldn't get it to link in the final executable
-#include "./control/motor_controller.c"
-#include "./control/encoder.c"
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,19 +55,16 @@
 
 /* USER CODE BEGIN PV */
 
-//Odometry
 static Encoder encoders[2] = {{0}, {0}};
 Encoder *encoder_right = &encoders[0];
 Encoder *encoder_left = &encoders[1];
 
 Odometry odom = {0};
 
-//PID
-Pid left_pid;
-Pid right_pid;
-Pid cross_pid;
+Pid pid_left  = {0};
+Pid pid_right = {0};
+Pid pid_cross = {0};
 
-//MotorController
 static MotorController motors[2] = {
   {
     // Right motor
@@ -188,9 +181,25 @@ int main(void) {
   pid_min = -(int) max_dutycycle;
   pid_max = (int) max_dutycycle;
 
-  left_pid.Config(config_msg.kp_left, config_msg.ki_left, config_msg.kd_left, pid_min, pid_max);
-  right_pid.Config(config_msg.kp_right, config_msg.ki_right, config_msg.kd_right, pid_min, pid_max);
-  cross_pid.Config(config_msg.kp_cross, config_msg.ki_cross, config_msg.kd_cross, pid_min, pid_max);
+
+  pid_left.kp = config_msg.kp_left;
+  pid_left.ki = config_msg.ki_left;
+  pid_left.kd = config_msg.kd_left;
+  pid_left.min = pid_min;
+  pid_left.max = pid_max;
+
+  pid_right.kp = config_msg.kp_right;
+  pid_right.ki = config_msg.ki_right;
+  pid_right.kd = config_msg.kd_right;
+  pid_right.min = pid_min;
+  pid_right.max = pid_max;
+
+  pid_cross.kp = config_msg.kp_cross;
+  pid_cross.ki = config_msg.ki_cross;
+  pid_cross.kd = config_msg.kd_cross;
+  pid_cross.min = pid_min;
+  pid_cross.max = pid_max;
+
 
   motorcontroller_brake(motor_left);
   motorcontroller_brake(motor_right);
@@ -297,14 +306,14 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   //PID control
   encoder_update(encoder_left);
   float left_velocity = encoder_linear_velocity(encoder_left);
-  int left_dutycycle = left_pid.Update(left_velocity);
+  int left_dutycycle = pid_update(&pid_left, left_velocity);
 
   encoder_update(encoder_right);
   float right_velocity = encoder_linear_velocity(encoder_right);
-  int right_dutycycle = right_pid.Update(right_velocity);
+  int right_dutycycle = pid_update(&pid_right, right_velocity);
 
   float difference = left_velocity - right_velocity;
-  int cross_dutycycle = cross_pid.Update(difference);
+  int cross_dutycycle = pid_update(&pid_cross, difference);
 
   left_dutycycle += cross_dutycycle;
   right_dutycycle -= cross_dutycycle;
@@ -338,11 +347,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
   float left_setpoint = odom.velocity.left;
   float right_setpoint = odom.velocity.right;
 
-  left_pid.Set(left_setpoint);
-  right_pid.Set(right_setpoint);
+  pid_left.setpoint = left_setpoint;
+  pid_right.setpoint = right_setpoint;
 
   float cross_setpoint = left_setpoint - right_setpoint;
-  cross_pid.Set(cross_setpoint);
+  pid_cross.setpoint = cross_setpoint;
 
   /*
    * Manage new transmission
