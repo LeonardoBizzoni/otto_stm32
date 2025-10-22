@@ -64,7 +64,7 @@ static Encoder encoders[2] = {{0}, {0}};
 Encoder *encoder_right = &encoders[0];
 Encoder *encoder_left = &encoders[1];
 
-Odometry odom;
+Odometry odom = {0};
 
 //PID
 Pid left_pid;
@@ -176,7 +176,7 @@ int main(void) {
   encoder_right->wheel_circumference = config_msg.right_wheel_circumference;
   encoder_right->ticks_per_revolution = config_msg.ticks_per_revolution;
 
-  odom = Odometry(config_msg.baseline);
+  odom.baseline = config_msg.baseline;
 
   encoder_init(encoders);
   motorcontroller_init(motors);
@@ -313,7 +313,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   motorcontroller_speed_set(motor_right, right_dutycycle);
 }
 
-uint8_t porcoddio = 0;
+uint8_t porcoddio = 0; // NOTE(lb): LOL
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
   /*
    * Manage received message
@@ -334,10 +334,9 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
     otto_status = 3;
   }
 
-  odom.FromCmdVelToSetpoint(linear_velocity, angular_velocity);
-
-  float left_setpoint = odom.GetLeftVelocity();
-  float right_setpoint = odom.GetRightVelocity();
+  odometry_setpoint_from_cmdvel(&odom, linear_velocity, angular_velocity);
+  float left_setpoint = odom.velocity.left;
+  float right_setpoint = odom.velocity.right;
 
   left_pid.Set(left_setpoint);
   right_pid.Set(right_setpoint);
