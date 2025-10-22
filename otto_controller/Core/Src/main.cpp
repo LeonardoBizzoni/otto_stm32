@@ -35,6 +35,9 @@
 
 #include "communication/otto_messages.h"
 
+// NOTE(lb): couldn't get it to link in the final executable
+#include "./control/motor_controller.c"
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -56,8 +59,8 @@
 /* USER CODE BEGIN PV */
 
 //Odometry
-Encoder right_encoder;
-Encoder left_encoder;
+Encoder encoder_left = {0};
+Encoder encoder_right = {0};
 Odometry odom;
 
 //PID
@@ -66,16 +69,28 @@ Pid right_pid;
 Pid cross_pid;
 
 //MotorController
-MotorController right_motor(sleep1_GPIO_Port,
-sleep1_Pin,
-                            dir1_GPIO_Port,
-                            dir1_Pin,
-                            &htim4, TIM_CHANNEL_4);
-MotorController left_motor(sleep2_GPIO_Port,
-sleep2_Pin,
-                           dir2_GPIO_Port,
-                           dir2_Pin,
-                           &htim4, TIM_CHANNEL_3);
+static MotorController motors[] = {
+  {
+    // Right motor
+    .sleep_gpio_port = sleep1_GPIO_Port,
+    .sleep_pin = sleep1_Pin,
+    .dir_gpio_port = dir1_GPIO_Port,
+    .dir_pin = dir1_Pin,
+    .pwm_timer = &htim4,
+    .pwm_channel = TIM_CHANNEL_4,
+  },
+  {
+    // Left motor
+    .sleep_gpio_port = sleep2_GPIO_Port,
+    .sleep_pin = sleep2_Pin,
+    .dir_gpio_port = dir2_GPIO_Port,
+    .dir_pin = dir2_Pin,
+    .pwm_timer = &htim4,
+    .pwm_channel = TIM_CHANNEL_3,
+  },
+};
+MotorController *motor_right = &motors[0];
+MotorController *motor_left = &motors[1];
 
 //Communication
 ConfigMessage config_msg;
@@ -150,18 +165,20 @@ int main(void) {
     }
   }
 
-  left_encoder = Encoder(&htim2, config_msg.left_wheel_circumference,
-                         config_msg.ticks_per_revolution);
-  right_encoder = Encoder(&htim5, config_msg.right_wheel_circumference,
-                           config_msg.ticks_per_revolution);
+  left_encoder.timer = &htim2;
+  left_encoder.wheel_circumference = config_msg.left_wheel_circumference;
+  left_encoder.ticks_per_revolution = config_msg.ticks_per_revolution;
+
+  right_encoder.timer = &htim5;
+  right_encoder.wheel_circumference = config_msg.right_wheel_circumference;
+  right_encoder.ticks_per_revolution = config_msg.ticks_per_revolution;
 
   odom = Odometry(config_msg.baseline);
 
   left_encoder.Setup();
   right_encoder.Setup();
 
-  left_motor.Setup();
-  right_motor.Setup();
+  motorcontroller_init(motors);
 
   //right and left motors have the same parameters
   uint32_t max_dutycycle = *(&htim4.Instance->ARR);
@@ -174,8 +191,8 @@ int main(void) {
   right_pid.Config(config_msg.kp_right, config_msg.ki_right, config_msg.kd_right, pid_min, pid_max);
   cross_pid.Config(config_msg.kp_cross, config_msg.ki_cross, config_msg.kd_cross, pid_min, pid_max);
 
-  left_motor.Coast();
-  right_motor.Coast();
+  motorcontroller_brake(motor_left);
+  motorcontroller_brake(motor_right);
 
   //Enables TIM6 interrupt (used for PID control)
   HAL_TIM_Base_Start_IT(&htim6);
@@ -289,9 +306,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   left_dutycycle += cross_dutycycle;
   right_dutycycle -= cross_dutycycle;
 
-  left_motor.SetSpeed(left_dutycycle);
-  right_motor.SetSpeed(right_dutycycle);
-
+  motorcontroller_speed_set(motor_left, left_dutycycle);
+  motorcontroller_speed_set(motor_right, right_dutycycle);
 }
 
 uint8_t porcoddio = 0;
@@ -372,14 +388,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   if (GPIO_Pin == user_button_Pin) {
     //TODO ci può servire il bottone blu?
   } else if (GPIO_Pin == fault1_Pin) {
-    left_motor.Brake();
-    right_motor.Brake();
+    motorcontroller_brake(motor_left);
+    motorcontroller_brake(motor_right);
     //stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
     otto_status = 4;
   } else if (GPIO_Pin == fault2_Pin) {
-    left_motor.Brake();
-    right_motor.Brake();
+    motorcontroller_brake(motor_left);
+    motorcontroller_brake(motor_right);
     //stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
     otto_status = 4;

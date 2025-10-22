@@ -47,7 +47,14 @@ extern "C" {
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
+#define ABS(a) ((a) >= 0 ? (a) : (-(a)))
+#define MAX(a, b) ((a) >= (b) ? (a) : (b))
+#define MIN(a, b) ((a) <= (b) ? (a) : (b))
+#define CLAMP_TOP(a, b) MIN((a), (b))
+#define CLAMP_BOT(a, b) MAX((a), (b))
+#define CLAMP(v, min, max) CLAMP_BOT(CLAMP_TOP(v, max), min)
 
+#define ARRLENGHT(ARR) (sizeof((ARR)) / sizeof(*(ARR)))
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
