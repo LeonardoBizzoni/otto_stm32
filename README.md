@@ -34,4 +34,4 @@ Refer to [otto_messages.h](https://github.com/iralabdisco/otto_stm32/blob/master
 The CRC standard used is CRC-32/MPEG-2, tested with python package [crccheck](https://pythonhosted.org/crccheck/crccheck.html)
 
 ## Coding style
-Follow your hearth.
+Follow your heart.
