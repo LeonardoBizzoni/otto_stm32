@@ -81,20 +81,18 @@ void odometry_setpoint_from_cmdvel(Odometry *odom, float linear_vel,
 int32_t pid_update(Pid *pid, float measure) {
   pid->error = pid->setpoint - measure;
 
-  //proportional term
-  float output = pid->error * pid->kp;
+  float output = pid->error * pid->ks.proportional;
 
   //integral term without windup
   pid->error_sum += pid->error;
-  output += pid->error_sum * pid->ki;
+  output += pid->error_sum * pid->ks.integral;
 
-  //derivative term
-  output += (pid->error - pid->previous_error) * pid->kd;
+  output += (pid->error - pid->previous_error) * pid->ks.derivative;
   pid->previous_error = pid->error;
 
-  //anti windup
+  // anti windup
   pid->error_sum -= pid->error;
-  int32_t integer_output = CLAMP(((int32_t)output), pid->min, pid->max);
+  int32_t integer_output = CLAMP(((int32_t)output), pid_min, pid_max);
   return integer_output;
 }
 

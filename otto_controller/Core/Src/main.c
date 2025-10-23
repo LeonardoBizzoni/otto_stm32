@@ -28,6 +28,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <string.h> // memcpy
+
 #include "control/encoder.h"
 #include "control/odometry.h"
 #include "control/motor_controller.h"
@@ -55,7 +57,14 @@
 
 /* USER CODE BEGIN PV */
 
-static Encoder encoders[2] = {{0}, {0}};
+static Encoder encoders[2] = {
+  {
+    .timer = &htim5,
+  },
+  {
+    .timer = &htim2,
+  },
+};
 Encoder *encoder_right = &encoders[0];
 Encoder *encoder_left = &encoders[1];
 
@@ -64,6 +73,9 @@ Odometry odom = {0};
 Pid pid_left  = {0};
 Pid pid_right = {0};
 Pid pid_cross = {0};
+
+int32_t pid_max = 0;
+int32_t pid_min = 0;
 
 static MotorController motors[2] = {
   {
@@ -97,7 +109,7 @@ volatile int32_t left_ticks;
 volatile int32_t right_ticks;
 volatile float previous_tx_millis;
 volatile uint8_t tx_done_flag = 1;
-volatile uint16_t otto_status = 0;
+volatile MessageStatusCode otto_status = MessageStatusCode_Waiting4Config;
 
 /* USER CODE END PV */
 
@@ -150,56 +162,45 @@ int main(void) {
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
 
-  //wait for config
-  HAL_StatusTypeDef config_status = HAL_UART_Receive(&huart6, (uint8_t*) &config_msg, sizeof(config_msg), 60*1000);
-  uint32_t config_crc = HAL_CRC_Calculate(&hcrc, (uint32_t*) &config_msg, sizeof(config_msg) - 4);
-  if (config_crc != config_msg.crc || config_status != HAL_OK){
-    status_msg.status = 2;
-    status_msg.crc = HAL_CRC_Calculate(&hcrc, (uint32_t*) &status_msg, sizeof(status_msg) - 4);
-    while(1){
-      HAL_UART_Transmit(&huart6, (uint8_t*) &status_msg, sizeof(status_msg), 1000);
+  // NOTE(lb): timeout is in milliseconds
+  // wait for config
+  HAL_StatusTypeDef config_status =
+    HAL_UART_Receive(&huart6, (uint8_t*)&config_msg,
+                     sizeof config_msg, 60 * 1000); // 60sec
+  uint32_t config_crc =
+    HAL_CRC_Calculate(&hcrc, (uint32_t*)&config_msg,
+                      (sizeof config_msg) - (sizeof config_msg.crc));
+  if (config_crc != config_msg.crc || config_status != HAL_OK) {
+    status_msg.status = MessageStatusCode_Error_Config;
+    status_msg.crc =
+      HAL_CRC_Calculate(&hcrc, (uint32_t*)&status_msg, sizeof(status_msg) - 4);
+    for (;;) {
+      HAL_UART_Transmit(&huart6, (uint8_t*)&status_msg,
+                        sizeof(status_msg), 1000); // 1sec
     }
   }
 
-  encoder_left->timer = &htim2;
+  // ======================================================================
+  // NOTE(lb): all of this should be transformed in compile time constants
+  odom.baseline = config_msg.baseline;
   encoder_left->wheel_circumference = config_msg.left_wheel_circumference;
   encoder_left->ticks_per_revolution = config_msg.ticks_per_revolution;
-
-  encoder_right->timer = &htim5;
   encoder_right->wheel_circumference = config_msg.right_wheel_circumference;
   encoder_right->ticks_per_revolution = config_msg.ticks_per_revolution;
 
-  odom.baseline = config_msg.baseline;
+  // NOTE(lb): maybe even this but i'm not sure. And at this point
+  //           i'm not even sure that there is a need for a config message.
+  memcpy(&pid_left.ks,  &config_msg.pid_ks_left,  sizeof pid_left.ks);
+  memcpy(&pid_right.ks, &config_msg.pid_ks_right, sizeof pid_right.ks);
+  memcpy(&pid_cross.ks, &config_msg.pid_ks_cross, sizeof pid_cross.ks);
+  // ======================================================================
 
   encoder_init(encoders);
   motorcontroller_init(motors);
 
   //right and left motors have the same parameters
-  uint32_t max_dutycycle = *(&htim4.Instance->ARR);
-  int pid_min = 0;
-  int pid_max = 0;
-  pid_min = -(int) max_dutycycle;
-  pid_max = (int) max_dutycycle;
-
-
-  pid_left.kp = config_msg.kp_left;
-  pid_left.ki = config_msg.ki_left;
-  pid_left.kd = config_msg.kd_left;
-  pid_left.min = pid_min;
-  pid_left.max = pid_max;
-
-  pid_right.kp = config_msg.kp_right;
-  pid_right.ki = config_msg.ki_right;
-  pid_right.kd = config_msg.kd_right;
-  pid_right.min = pid_min;
-  pid_right.max = pid_max;
-
-  pid_cross.kp = config_msg.kp_cross;
-  pid_cross.ki = config_msg.ki_cross;
-  pid_cross.kd = config_msg.kd_cross;
-  pid_cross.min = pid_min;
-  pid_cross.max = pid_max;
-
+  pid_max = (int32_t)htim4.Instance->ARR;
+  pid_min = -pid_max;
 
   motorcontroller_brake(motor_left);
   motorcontroller_brake(motor_right);
@@ -336,11 +337,11 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
   if (crc_rx == vel_msg.crc) {
     linear_velocity = vel_msg.linear_velocity;
     angular_velocity = vel_msg.angular_velocity;
-    otto_status = 1;
+    otto_status = MessageStatusCode_Running;
   } else {
     linear_velocity = 0;
     angular_velocity = 0;
-    otto_status = 3;
+    otto_status = MessageStatusCode_Error_Velocity;
   }
 
   odometry_setpoint_from_cmdvel(&odom, linear_velocity, angular_velocity);
@@ -403,13 +404,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     motorcontroller_brake(motor_right);
     //stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
-    otto_status = 4;
+    otto_status = MessageStatusCode_Fault_HBridge;
   } else if (GPIO_Pin == fault2_Pin) {
     motorcontroller_brake(motor_left);
     motorcontroller_brake(motor_right);
     //stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
-    otto_status = 4;
+    otto_status = MessageStatusCode_Fault_HBridge;
   }
 
 }

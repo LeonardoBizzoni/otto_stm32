@@ -1,12 +1,22 @@
 #ifndef PID_H
 #define PID_H
 
-typedef struct {
-  //PID constants
-  float kp;
-  float ki;
-  float kd;
+typedef union {
+  struct {
+    float proportional;
+    float integral;
+    float derivative;
+  };
+  struct {
+    float kp;
+    float ki;
+    float kd;
+  };
+  float values[3];
+} PidConstants;
 
+typedef struct {
+  PidConstants ks;
   float error;
   float setpoint;
 
@@ -15,9 +25,6 @@ typedef struct {
 
   //needed for derivative term
   float previous_error;
-
-  int32_t min;
-  int32_t max;
 } Pid;
 
 int32_t pid_update(Pid *pid, float measure);

@@ -43,6 +43,9 @@ extern "C" {
 /* Exported constants --------------------------------------------------------*/
 /* USER CODE BEGIN EC */
 
+extern int32_t pid_max;
+extern int32_t pid_min;
+
 /* USER CODE END EC */
 
 /* Exported macro ------------------------------------------------------------*/
