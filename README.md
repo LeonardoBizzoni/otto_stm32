@@ -6,7 +6,7 @@ The main program is located in [otto_controller](https://github.com/iralabdisco/
 
 ## Instructions
 
-If you just want to use the robot you can download the binary file from the [releases](https://github.com/iralabdisco/otto/releases): 
+If you just want to use the robot you can download the binary file from the [releases](https://github.com/iralabdisco/otto/releases):
 
 1. Download the lastest otto_controller.bin
 2. Plug your Nucleo board in your PC.
@@ -34,6 +34,4 @@ Refer to [otto_messages.h](https://github.com/iralabdisco/otto_stm32/blob/master
 The CRC standard used is CRC-32/MPEG-2, tested with python package [crccheck](https://pythonhosted.org/crccheck/crccheck.html)
 
 ## Coding style
-Follow [Google C++ guideline](https://google.github.io/styleguide/cppguide.html) while working on the project
-
-Eclipse's formatting configuration file can be found [here](https://github.com/google/styleguide/blob/gh-pages/eclipse-cpp-google-style.xml)
+Follow your hearth.
