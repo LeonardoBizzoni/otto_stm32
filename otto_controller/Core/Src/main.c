@@ -57,16 +57,20 @@
 
 /* USER CODE BEGIN PV */
 
-static Encoder encoders[2] = {
-  {
+static union {
+  Encoder values[2];
+  struct {
+    Encoder right;
+    Encoder left;
+  };
+} encoders = {
+  .right = {
     .timer = &htim5,
   },
-  {
+  .left = {
     .timer = &htim2,
   },
 };
-Encoder *encoder_right = &encoders[0];
-Encoder *encoder_left = &encoders[1];
 
 Odometry odom = {0};
 
@@ -77,9 +81,14 @@ Pid pid_cross = {0};
 int32_t pid_max = 0;
 int32_t pid_min = 0;
 
-static MotorController motors[2] = {
-  {
-    // Right motor
+static union {
+  MotorController values[2];
+  struct {
+    MotorController right;
+    MotorController left;
+  };
+} motors = {
+  .right = {
     .sleep_gpio_port = sleep1_GPIO_Port,
     .sleep_pin = sleep1_Pin,
     .dir_gpio_port = dir1_GPIO_Port,
@@ -87,8 +96,7 @@ static MotorController motors[2] = {
     .pwm_timer = &htim4,
     .pwm_channel = TIM_CHANNEL_4,
   },
-  {
-    // Left motor
+  .left = {
     .sleep_gpio_port = sleep2_GPIO_Port,
     .sleep_pin = sleep2_Pin,
     .dir_gpio_port = dir2_GPIO_Port,
@@ -97,8 +105,6 @@ static MotorController motors[2] = {
     .pwm_channel = TIM_CHANNEL_3,
   },
 };
-MotorController *motor_right = &motors[0];
-MotorController *motor_left = &motors[1];
 
 //Communication
 ConfigMessage config_msg;
@@ -183,10 +189,10 @@ int main(void) {
   // ======================================================================
   // NOTE(lb): all of this should be transformed in compile time constants
   odom.baseline = config_msg.baseline;
-  encoder_left->wheel_circumference = config_msg.left_wheel_circumference;
-  encoder_left->ticks_per_revolution = config_msg.ticks_per_revolution;
-  encoder_right->wheel_circumference = config_msg.right_wheel_circumference;
-  encoder_right->ticks_per_revolution = config_msg.ticks_per_revolution;
+  encoders.left.wheel_circumference = config_msg.left_wheel_circumference;
+  encoders.left.ticks_per_revolution = config_msg.ticks_per_revolution;
+  encoders.right.wheel_circumference = config_msg.right_wheel_circumference;
+  encoders.right.ticks_per_revolution = config_msg.ticks_per_revolution;
 
   // NOTE(lb): maybe even this but i'm not sure. And at this point
   //           i'm not even sure that there is a need for a config message.
@@ -195,15 +201,15 @@ int main(void) {
   memcpy(&pid_cross.ks, &config_msg.pid_ks_cross, sizeof pid_cross.ks);
   // ======================================================================
 
-  encoder_init(encoders);
-  motorcontroller_init(motors);
+  encoder_init(encoders.values);
+  motorcontroller_init(motors.values);
 
   //right and left motors have the same parameters
   pid_max = (int32_t)htim4.Instance->ARR;
   pid_min = -pid_max;
 
-  motorcontroller_brake(motor_left);
-  motorcontroller_brake(motor_right);
+  motorcontroller_brake(&motors.left);
+  motorcontroller_brake(&motors.right);
 
   //Enables TIM6 interrupt (used for PID control)
   HAL_TIM_Base_Start_IT(&htim6);
@@ -301,16 +307,16 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   //TIMER 100Hz PID control
 
   //accumulate ticks for transmission
-  left_ticks += encoder_count_get(encoder_left);
-  right_ticks += encoder_count_get(encoder_right);
+  left_ticks += encoder_count_get(&encoders.left);
+  right_ticks += encoder_count_get(&encoders.right);
 
   //PID control
-  encoder_update(encoder_left);
-  float left_velocity = encoder_linear_velocity(encoder_left);
+  encoder_update(&encoders.left);
+  float left_velocity = encoder_linear_velocity(&encoders.left);
   int left_dutycycle = pid_update(&pid_left, left_velocity);
 
-  encoder_update(encoder_right);
-  float right_velocity = encoder_linear_velocity(encoder_right);
+  encoder_update(&encoders.right);
+  float right_velocity = encoder_linear_velocity(&encoders.right);
   int right_dutycycle = pid_update(&pid_right, right_velocity);
 
   float difference = left_velocity - right_velocity;
@@ -319,8 +325,8 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   left_dutycycle += cross_dutycycle;
   right_dutycycle -= cross_dutycycle;
 
-  motorcontroller_speed_set(motor_left, left_dutycycle);
-  motorcontroller_speed_set(motor_right, right_dutycycle);
+  motorcontroller_speed_set(&motors.left, left_dutycycle);
+  motorcontroller_speed_set(&motors.right, right_dutycycle);
 }
 
 uint8_t porcoddio = 0; // NOTE(lb): LOL
@@ -358,8 +364,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
    * Manage new transmission
    */
 
-  int32_t left_ticks_tx = left_ticks + encoder_count_get(encoder_left);
-  int32_t right_ticks_tx = right_ticks + encoder_count_get(encoder_right);
+  int32_t left_ticks_tx = left_ticks + encoder_count_get(&encoders.left);
+  int32_t right_ticks_tx = right_ticks + encoder_count_get(&encoders.right);
 
   status_msg.left_ticks = left_ticks_tx;
   status_msg.right_ticks = right_ticks_tx;
@@ -377,7 +383,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
 
   status_msg.crc = crc_tx;
 
-  if (tx_done_flag == 1) {
+  if (tx_done_flag) {
     HAL_UART_Transmit_DMA(&huart6, (uint8_t*) &status_msg, sizeof(status_msg));
     tx_done_flag = 0;
   }
@@ -397,22 +403,19 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *UartHandle) {
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   //Blue user button on the NUCLEO board
-  if (GPIO_Pin == user_button_Pin) {
+  switch (GPIO_Pin) {
+  case user_button_Pin: {
     //TODO ci può servire il bottone blu?
-  } else if (GPIO_Pin == fault1_Pin) {
-    motorcontroller_brake(motor_left);
-    motorcontroller_brake(motor_right);
+  } break;
+  case fault1_Pin:
+  case fault2_Pin: {
+    motorcontroller_brake(&motors.left);
+    motorcontroller_brake(&motors.right);
     //stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
     otto_status = MessageStatusCode_Fault_HBridge;
-  } else if (GPIO_Pin == fault2_Pin) {
-    motorcontroller_brake(motor_left);
-    motorcontroller_brake(motor_right);
-    //stop TIM6 interrupt (used for PID control)
-    HAL_TIM_Base_Stop_IT(&htim6);
-    otto_status = MessageStatusCode_Fault_HBridge;
+  } break;
   }
-
 }
 /* USER CODE END 4 */
 
