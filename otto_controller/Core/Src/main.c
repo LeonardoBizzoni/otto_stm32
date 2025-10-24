@@ -106,11 +106,6 @@ static union {
   },
 };
 
-//Communication
-ConfigMessage config_msg;
-VelocityMessage vel_msg;
-StatusMessage status_msg;
-
 volatile int32_t left_ticks;
 volatile int32_t right_ticks;
 volatile float previous_tx_millis;
@@ -168,24 +163,41 @@ int main(void) {
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
 
-  // NOTE(lb): timeout is in milliseconds
-  // wait for config
-  HAL_StatusTypeDef config_status =
-    HAL_UART_Receive(&huart6, (uint8_t*)&config_msg,
-                     sizeof config_msg, 60 * 1000); // 60sec
-  uint32_t config_crc =
-    HAL_CRC_Calculate(&hcrc, (uint32_t*)&config_msg,
-                      (sizeof config_msg) - (sizeof config_msg.crc));
-  if (config_crc != config_msg.crc || config_status != HAL_OK) {
-    status_msg.status = MessageStatusCode_Error_Config;
-    status_msg.crc =
-      HAL_CRC_Calculate(&hcrc, (uint32_t*)&status_msg, sizeof(status_msg) - 4);
-    for (;;) {
-      HAL_UART_Transmit(&huart6, (uint8_t*)&status_msg,
-                        sizeof(status_msg), 1000); // 1sec
-    }
-  }
+  // wait for config or run
+  OttoMessage msg = {0};
+  // TODO(lb): how do i send stuff to USART6?
+  HAL_StatusTypeDef uart_packet_status =
+    HAL_UART_Receive(&huart6, (uint8_t*)&msg, sizeof msg.header, 60 * 1000);
+  otto_report_unless(uart_packet_status == HAL_OK,
+                     OttoMessageError_UART_ReceiveTimeoutElapsed);
+  otto_report_unless(msg.header.type < OttoMessageType_COUNT,
+                     OttoMessageError_Command_NotRecognized);
+  otto_report_unless(msg.header.type == OttoMessageType_Run ||
+                     msg.header.type == OttoMessageType_Config,
+                     OttoMessageError_Command_NotAvailable);
 
+  uint32_t crc_computed;
+  uint32_t *msg_body = (uint32_t*)((uint8_t*)&msg + sizeof msg.header.crc);
+  switch (msg.header.type) {
+  case OttoMessageType_Run: {
+    crc_computed = HAL_CRC_Calculate(&hcrc, msg_body, sizeof msg.header.type);
+  } break;
+  case OttoMessageType_Config: {
+    // NOTE(lb): i don't know if the rest of the message is buffered
+    //           and so i can immediately read it in or if this entire
+    //           idea is trash.
+    HAL_StatusTypeDef config_uart_packet_status =
+      HAL_UART_Receive(&huart6, ((uint8_t*)&msg + sizeof msg.header),
+                       sizeof msg.config, 60 * 1000);
+    otto_report_unless(config_uart_packet_status == HAL_OK,
+                       OttoMessageError_UART_ReceiveTimeoutElapsed);
+    crc_computed = HAL_CRC_Calculate(&hcrc, msg_body,
+                                     sizeof msg.config + sizeof msg.header.type);
+  } break;
+  }
+  otto_report_unless(crc_computed == msg.header.crc, OttoMessageError_UART_Crc);
+
+#if 0
   // ======================================================================
   // NOTE(lb): all of this should be transformed in compile time constants
   odom.baseline = config_msg.baseline;
@@ -200,6 +212,7 @@ int main(void) {
   memcpy(&pid_right.ks, &config_msg.pid_ks_right, sizeof pid_right.ks);
   memcpy(&pid_cross.ks, &config_msg.pid_ks_cross, sizeof pid_cross.ks);
   // ======================================================================
+#endif
 
   encoder_init(encoders.values);
   motorcontroller_init(motors.values);
@@ -214,8 +227,10 @@ int main(void) {
   //Enables TIM6 interrupt (used for PID control)
   HAL_TIM_Base_Start_IT(&htim6);
 
+#if 0
   //Enables UART RX interrupt
   HAL_UART_Receive_DMA(&huart6, (uint8_t*) &vel_msg, 12);
+#endif
 
   /* USER CODE END 2 */
 
@@ -302,6 +317,12 @@ static void MX_NVIC_Init(void) {
 }
 
 /* USER CODE BEGIN 4 */
+void otto_report_handler(OttoMessageError error_code) {
+  // TODO(lb): stop motors, send error message via UART,
+  //           go back to some sort of "initialization" state
+  for (;;) {}
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
   //TIMER 100Hz PID control
@@ -329,6 +350,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   motorcontroller_speed_set(&motors.right, right_dutycycle);
 }
 
+#if 0
 uint8_t porcoddio = 0; // NOTE(lb): LOL
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
   /*
@@ -390,6 +412,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
 
   HAL_UART_Receive_DMA(&huart6, (uint8_t*) &vel_msg, sizeof(vel_msg));
 }
+#endif
 
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle) {

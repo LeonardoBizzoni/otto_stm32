@@ -57,7 +57,15 @@ extern int32_t pid_min;
 #define CLAMP_BOT(a, b) MAX((a), (b))
 #define CLAMP(v, min, max) CLAMP_BOT(CLAMP_TOP(v, max), min)
 
-#define ARRLENGHT(ARR) (sizeof((ARR)) / sizeof(*(ARR)))
+#define ARRLENGHT(Arr) (sizeof((Arr)) / sizeof(*(Arr)))
+
+#define otto_report_unless(Cond, MessageStatusCode) \
+  do {                                              \
+    if (!(Cond)) {                                  \
+      otto_report_handler(MessageStatusCode);       \
+    }                                               \
+  } while (0)
+
 /* USER CODE END EM */
 
 /* Exported functions prototypes ---------------------------------------------*/
