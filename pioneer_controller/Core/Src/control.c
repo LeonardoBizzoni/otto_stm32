@@ -73,7 +73,7 @@ void odometry_setpoint_from_cmdvel(P3DX_Odometry *odom, float linear_vel, float 
 
 // ============================================================
 // PID
-int32_t p3dx_pid_update(P3DX_Pid *pid, float measure) {
+int32_t p3dx_pid_update(P3DX_PidController *pid, float measure) {
   pid->error = pid->setpoint - measure;
 
   float output = pid->error * pid->ks.proportional;

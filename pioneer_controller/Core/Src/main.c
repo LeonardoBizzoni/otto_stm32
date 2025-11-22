@@ -41,8 +41,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-void p3dx_report_handler(P3DX_Error error_code, const char *filename, int32_t filename_length, int32_t line);
-void p3dx_message_handle(P3DX_State state, UART_HandleTypeDef *huart, int32_t wait_ms);
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -54,6 +52,7 @@ void p3dx_message_handle(P3DX_State state, UART_HandleTypeDef *huart, int32_t wa
 
 /* USER CODE BEGIN PV */
 
+// TODO(lb): fill with sensible default
 static union {
   P3DX_Encoder values[2];
   struct {
@@ -63,20 +62,47 @@ static union {
 } encoders = {
   .right = {
     .timer = &htim5,
+    .ticks_per_revolution = 200,
+    .wheel_circumference = 0.1f,
   },
   .left = {
     .timer = &htim2,
+    .ticks_per_revolution = 200,
+    .wheel_circumference = 0.1f,
   },
 };
 
-P3DX_Odometry odometry = {0};
+// TODO(lb): fill with sensible default
+P3DX_Odometry odometry = {
+  .baseline = 0.3,
+};
 
-P3DX_Pid pid_left  = {0};
-P3DX_Pid pid_right = {0};
-P3DX_Pid pid_cross = {0};
+// TODO(lb): fill with sensible default
+P3DX_PidController pid_left = {
+  .ks = {
+    .proportional = 0.1f,
+    .integral     = 0.1f,
+    .derivative   = 0.1f,
+  },
+};
 
-int32_t pid_max = 0;
-int32_t pid_min = 0;
+// TODO(lb): fill with sensible default
+P3DX_PidController pid_right = {
+  .ks = {
+    .proportional = 0.1f,
+    .integral     = 0.1f,
+    .derivative   = 0.1f,
+  },
+};
+
+// TODO(lb): fill with sensible default
+P3DX_PidController pid_cross = {
+  .ks = {
+    .proportional = 0.1f,
+    .integral     = 0.1f,
+    .derivative   = 0.1f,
+  },
+};
 
 static union {
   P3DX_Motor values[2];
@@ -103,6 +129,9 @@ static union {
   },
 };
 
+int32_t pid_max = 0;
+int32_t pid_min = 0;
+
 volatile int32_t left_ticks;
 volatile int32_t right_ticks;
 volatile float previous_tx_millis;
@@ -116,7 +145,7 @@ volatile P3DX_State p3dx_state = P3DX_State_Init;
 void SystemClock_Config(void);
 static void MX_NVIC_Init(void);
 /* USER CODE BEGIN PFP */
-
+__attribute__((noreturn)) void start(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -163,27 +192,7 @@ int main(void)
   MX_NVIC_Init();
   /* USER CODE BEGIN 2 */
 
-  do {
-    p3dx_message_handle(P3DX_State_Init, &huart3, 180 * 1000);
-  } while(p3dx_state != P3DX_State_Running);
-
-  p3dx_encoder_init(encoders.values);
-  p3dx_motor_init(motors.values);
-
-  //right and left motors have the same parameters
-  pid_max = (int32_t)htim4.Instance->ARR;
-  pid_min = -pid_max;
-
-  p3dx_motor_brake(&motors.left);
-  p3dx_motor_brake(&motors.right);
-
-  //Enables TIM6 interrupt (used for PID control)
-  HAL_TIM_Base_Start_IT(&htim6);
-
-#if 0
-  //Enables UART RX interrupt
-  HAL_UART_Receive_DMA(&huart6, (uint8_t*) &vel_msg, 12);
-#endif
+  start();
 
   /* USER CODE END 2 */
 
@@ -277,9 +286,35 @@ static void MX_NVIC_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+__attribute__((noreturn)) void start(void) {
+  do {
+    p3dx_message_handle(P3DX_State_Init, &huart3, 180 * 1000);
+  } while(p3dx_state != P3DX_State_Running);
+
+  p3dx_encoder_init(encoders.values);
+  p3dx_motor_init(motors.values);
+
+  //right and left motors have the same parameters
+  pid_max = (int32_t)htim4.Instance->ARR;
+  pid_min = -pid_max;
+
+  p3dx_motor_brake(&motors.left);
+  p3dx_motor_brake(&motors.right);
+
+  //Enables TIM6 interrupt (used for PID control)
+  HAL_TIM_Base_Start_IT(&htim6);
+
+#if 0
+  //Enables UART RX interrupt
+  HAL_UART_Receive_DMA(&huart6, (uint8_t*) &vel_msg, 12);
+#endif
+
+  while (1);
+}
+
 void p3dx_message_handle(P3DX_State state, UART_HandleTypeDef *huart, int32_t wait_ms) {
   P3DX_Message msg = {0};
-  HAL_StatusTypeDef uart_packet_status = HAL_UART_Receive(huart, (uint8_t*)&msg, sizeof msg.header, wait_ms);
+  HAL_StatusTypeDef uart_packet_status = HAL_UART_Receive(huart, (uint8_t*)&msg, sizeof(msg), wait_ms);
   p3dx_report_unless(uart_packet_status == HAL_OK, P3DX_Error_UART_ReceiveTimeoutElapsed);
   p3dx_report_unless(msg.header.type < P3DX_MessageType_COUNT, P3DX_Error_Command_NotRecognized);
 
@@ -290,23 +325,26 @@ void p3dx_message_handle(P3DX_State state, UART_HandleTypeDef *huart, int32_t wa
     switch (msg.header.type) {
     case P3DX_MessageType_Run: {
       uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header);
-      p3dx_report_unless(crc_computed == crc_received, P3DX_Error_UART_Crc);
+      p3dx_report_unless(crc_received == -1 || crc_computed == crc_received, P3DX_Error_UART_Crc);
       p3dx_state = P3DX_State_Running;
     } break;
-    case P3DX_MessageType_Config: {
-      uart_packet_status = HAL_UART_Receive(huart, ((uint8_t*)&msg + sizeof msg.header), sizeof msg.config, 1);
-      p3dx_report_unless(uart_packet_status == HAL_OK, P3DX_Error_UART_ReceiveTimeoutElapsed);
-      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config);
-      p3dx_report_unless(crc_computed == crc_received, P3DX_Error_UART_Crc);
+    case P3DX_MessageType_Config_Robot: {
+      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_robot);
+      p3dx_report_unless(crc_received == -1 || crc_computed == crc_received, P3DX_Error_UART_Crc);
 
-      odometry.baseline = msg.config.baseline;
-      encoders.left.wheel_circumference = msg.config.left_wheel_circumference;
-      encoders.left.ticks_per_revolution = msg.config.ticks_per_revolution;
-      encoders.right.wheel_circumference = msg.config.right_wheel_circumference;
-      encoders.right.ticks_per_revolution = msg.config.ticks_per_revolution;
-      memcpy(&pid_left.ks,  &msg.config.pid_ks_left,  sizeof pid_left.ks);
-      memcpy(&pid_right.ks, &msg.config.pid_ks_right, sizeof pid_right.ks);
-      memcpy(&pid_cross.ks, &msg.config.pid_ks_cross, sizeof pid_cross.ks);
+      odometry.baseline = msg.config_robot.baseline;
+      encoders.left.wheel_circumference   = msg.config_robot.left_wheel_circumference;
+      encoders.left.ticks_per_revolution  = msg.config_robot.left_ticks_per_revolution;
+      encoders.right.wheel_circumference  = msg.config_robot.right_wheel_circumference;
+      encoders.right.ticks_per_revolution = msg.config_robot.right_ticks_per_revolution;
+    } break;
+    case P3DX_MessageType_Config_PID: {
+      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_pid);
+      p3dx_report_unless(crc_received == -1 || crc_computed == crc_received, P3DX_Error_UART_Crc);
+
+      memcpy(&pid_left.ks,  &msg.config_pid.left,  sizeof pid_left.ks);
+      memcpy(&pid_right.ks, &msg.config_pid.right, sizeof pid_right.ks);
+      memcpy(&pid_cross.ks, &msg.config_pid.cross, sizeof pid_cross.ks);
     } break;
     }
   } break;
@@ -425,9 +463,6 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *UartHandle) {
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   //Blue user button on the NUCLEO board
   switch (GPIO_Pin) {
-  case user_button_Pin: {
-    //TODO ci può servire il bottone blu?
-  } break;
   case fault1_Pin:
   case fault2_Pin: {
     p3dx_motor_brake(&motors.left);

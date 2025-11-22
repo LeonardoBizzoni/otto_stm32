@@ -1,6 +1,15 @@
 #ifndef P3DX_MESSAGE_H
 #define P3DX_MESSAGE_H
 
+typedef union {
+  struct {
+    float proportional;
+    float integral;
+    float derivative;
+  };
+  float values[3];
+} P3DX_PidConstants;
+
 typedef uint16_t MessageStatusCode;
 enum {
   MessageStatusCode_Waiting4Config = 0,
@@ -22,7 +31,10 @@ enum {
   P3DX_MessageType_Error,
 
   P3DX_MessageType_Run,
-  P3DX_MessageType_Config,
+  P3DX_MessageType_Config_Robot,
+  P3DX_MessageType_Config_PID,
+
+
   P3DX_MessageType_Status,
   P3DX_MessageType_Velocity,
 
@@ -40,30 +52,35 @@ enum {
   P3DX_Error_Command_NotAvailable,
 };
 
+#pragma pack(push, 1)
 typedef struct {
   struct {
-    uint32_t crc;
     P3DX_MessageType type;
+    uint32_t crc;
   } header;
 
   union {
     struct {
+      P3DX_Error reason;
+      int32_t line;
       int32_t filename_size;
       const char *filename;
-      int32_t line;
-      P3DX_Error reason;
     } error;
 
     struct {
-      uint32_t ticks_per_revolution;
       float baseline;
       float left_wheel_circumference;
+      uint32_t left_ticks_per_revolution;
       float right_wheel_circumference;
+      uint32_t right_ticks_per_revolution;
+    } config_robot;
 
-      P3DX_PidConstants pid_ks_left;
-      P3DX_PidConstants pid_ks_right;
-      P3DX_PidConstants pid_ks_cross;
-    } config;
+    struct {
+      P3DX_PidConstants left;
+      P3DX_PidConstants right;
+      P3DX_PidConstants cross;
+    } config_pid;
+
     struct {
       MessageStatusCode status_code;
       uint16_t delta_millis;
@@ -78,5 +95,6 @@ typedef struct {
     } velocity;
   };
 } P3DX_Message;
+#pragma pack(pop)
 
 #endif /* INC_COMMUNICATION_OTTO_MESSAGES_H_ */
