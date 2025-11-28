@@ -30,7 +30,7 @@
 
 #include <string.h> // memcpy
 
-#include "p3dx/p3dx_inc.h"
+#include "firmware/fmw_inc.h"
 
 /* USER CODE END Includes */
 
@@ -54,10 +54,10 @@
 
 // TODO(lb): fill with sensible default
 static union {
-  P3DX_Encoder values[2];
+  FMW_Encoder values[2];
   struct {
-    P3DX_Encoder right;
-    P3DX_Encoder left;
+    FMW_Encoder right;
+    FMW_Encoder left;
   };
 } encoders = {
   .right = {
@@ -73,12 +73,12 @@ static union {
 };
 
 // TODO(lb): fill with sensible default
-P3DX_Odometry odometry = {
+FMW_Odometry odometry = {
   .baseline = 0.3,
 };
 
 // TODO(lb): fill with sensible default
-P3DX_PidController pid_left = {
+FMW_PidController pid_left = {
   .ks = {
     .proportional = 0.1f,
     .integral     = 0.1f,
@@ -87,7 +87,7 @@ P3DX_PidController pid_left = {
 };
 
 // TODO(lb): fill with sensible default
-P3DX_PidController pid_right = {
+FMW_PidController pid_right = {
   .ks = {
     .proportional = 0.1f,
     .integral     = 0.1f,
@@ -96,7 +96,7 @@ P3DX_PidController pid_right = {
 };
 
 // TODO(lb): fill with sensible default
-P3DX_PidController pid_cross = {
+FMW_PidController pid_cross = {
   .ks = {
     .proportional = 0.1f,
     .integral     = 0.1f,
@@ -105,10 +105,10 @@ P3DX_PidController pid_cross = {
 };
 
 static union {
-  P3DX_Motor values[2];
+  FMW_Motor values[2];
   struct {
-    P3DX_Motor right;
-    P3DX_Motor left;
+    FMW_Motor right;
+    FMW_Motor left;
   };
 } motors = {
   .right = {
@@ -132,12 +132,12 @@ static union {
 int32_t pid_max = 0;
 int32_t pid_min = 0;
 
-volatile int32_t left_ticks;
-volatile int32_t right_ticks;
-volatile float previous_tx_millis;
-volatile uint8_t tx_done_flag = 1;
+static volatile int32_t ticks_left  = 0;
+static volatile int32_t ticks_right = 0;
+static volatile float previous_tx_millis;
+static volatile uint8_t tx_done_flag = 1;
 /* volatile MessageStatusCode otto_status = MessageStatusCode_Waiting4Config; */
-volatile P3DX_State p3dx_state = P3DX_State_Init;
+static volatile FMW_State fmw_state = FMW_State_Init;
 
 /* USER CODE END PV */
 
@@ -288,18 +288,15 @@ static void MX_NVIC_Init(void)
 /* USER CODE BEGIN 4 */
 __attribute__((noreturn)) void start(void) {
   do {
-    p3dx_message_handle(P3DX_State_Init, &huart3, 180 * 1000);
-  } while(p3dx_state != P3DX_State_Running);
+    fmw_message_handle(FMW_State_Init, &huart3, 180 * 1000);
+  } while(fmw_state != FMW_State_Running);
 
-  p3dx_encoder_init(encoders.values);
-  p3dx_motor_init(motors.values);
+  fmw_encoder_init(encoders.values);
+  fmw_motor_init(motors.values);
 
   //right and left motors have the same parameters
   pid_max = (int32_t)htim4.Instance->ARR;
   pid_min = -pid_max;
-
-  p3dx_motor_brake(&motors.left);
-  p3dx_motor_brake(&motors.right);
 
   //Enables TIM6 interrupt (used for PID control)
   HAL_TIM_Base_Start_IT(&htim6);
@@ -312,25 +309,25 @@ __attribute__((noreturn)) void start(void) {
   while (1);
 }
 
-void p3dx_message_handle(P3DX_State state, UART_HandleTypeDef *huart, int32_t wait_ms) {
-  P3DX_Message msg = {0};
+void fmw_message_handle(FMW_State state, UART_HandleTypeDef *huart, int32_t wait_ms) {
+  FMW_Message msg = {0};
   HAL_StatusTypeDef uart_packet_status = HAL_UART_Receive(huart, (uint8_t*)&msg, sizeof(msg), wait_ms);
-  p3dx_report_unless(uart_packet_status == HAL_OK, P3DX_Error_UART_ReceiveTimeoutElapsed);
-  p3dx_report_unless(msg.header.type < P3DX_MessageType_COUNT, P3DX_Error_Command_NotRecognized);
+  fmw_report_unless(uart_packet_status == HAL_OK, FMW_Error_UART_ReceiveTimeoutElapsed);
+  fmw_report_unless(msg.header.type < FMW_MessageType_COUNT, FMW_Error_Command_NotRecognized);
 
   uint32_t crc_received = msg.header.crc;
   msg.header.crc = 0;
   switch (state) {
-  case P3DX_State_Init: {
+  case FMW_State_Init: {
     switch (msg.header.type) {
-    case P3DX_MessageType_Run: {
+    case FMW_MessageType_Run: {
       uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header);
-      p3dx_report_unless(crc_received == -1 || crc_computed == crc_received, P3DX_Error_UART_Crc);
-      p3dx_state = P3DX_State_Running;
+      fmw_report_unless(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      fmw_state = FMW_State_Running;
     } break;
-    case P3DX_MessageType_Config_Robot: {
+    case FMW_MessageType_Config_Robot: {
       uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_robot);
-      p3dx_report_unless(crc_received == -1 || crc_computed == crc_received, P3DX_Error_UART_Crc);
+      fmw_report_unless(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
 
       odometry.baseline = msg.config_robot.baseline;
       encoders.left.wheel_circumference   = msg.config_robot.left_wheel_circumference;
@@ -338,9 +335,9 @@ void p3dx_message_handle(P3DX_State state, UART_HandleTypeDef *huart, int32_t wa
       encoders.right.wheel_circumference  = msg.config_robot.right_wheel_circumference;
       encoders.right.ticks_per_revolution = msg.config_robot.right_ticks_per_revolution;
     } break;
-    case P3DX_MessageType_Config_PID: {
+    case FMW_MessageType_Config_PID: {
       uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_pid);
-      p3dx_report_unless(crc_received == -1 || crc_computed == crc_received, P3DX_Error_UART_Crc);
+      fmw_report_unless(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
 
       memcpy(&pid_left.ks,  &msg.config_pid.left,  sizeof pid_left.ks);
       memcpy(&pid_right.ks, &msg.config_pid.right, sizeof pid_right.ks);
@@ -351,40 +348,37 @@ void p3dx_message_handle(P3DX_State state, UART_HandleTypeDef *huart, int32_t wa
   }
 }
 
-void p3dx_report_handler(P3DX_Error error_code, const char *filename, int32_t filename_length, int32_t line) {
+void fmw_report_handler(FMW_Error error_code, const char *filename, int32_t filename_length, int32_t line) {
   // TODO(lb): send error message via UART,
   //           go back to some sort of "initialization" state
-  p3dx_motor_brake(&motors.left);
-  p3dx_motor_brake(&motors.right);
-  p3dx_state = P3DX_State_Error;
+  fmw_motor_brake(&motors.left);
+  fmw_motor_brake(&motors.right);
+  fmw_state = FMW_State_Error;
   for (;;) {}
 }
 
+// TIMER 100Hz PID control
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+  // NOTE(lb): for transmission
+  ticks_left  += fmw_encoder_count_get(&encoders.left);
+  ticks_right += fmw_encoder_count_get(&encoders.right);
 
-  //TIMER 100Hz PID control
+  { // PID control
+    fmw_encoder_update(&encoders.left);
+    float velocity_left = fmw_encoder_get_linear_velocity(&encoders.left);
+    int dutycycle_left = fmw_pid_update(&pid_left, velocity_left);
 
-  //accumulate ticks for transmission
-  left_ticks += p3dx_encoder_count_get(&encoders.left);
-  right_ticks += p3dx_encoder_count_get(&encoders.right);
+    fmw_encoder_update(&encoders.right);
+    float velocity_right = fmw_encoder_get_linear_velocity(&encoders.right);
+    int dutycycle_right = fmw_pid_update(&pid_right, velocity_right);
+    int dutycycle_cross = fmw_pid_update(&pid_cross, velocity_left - velocity_right);
 
-  //PID control
-  p3dx_encoder_update(&encoders.left);
-  float left_velocity = p3dx_encoder_get_linear_velocity(&encoders.left);
-  int left_dutycycle = p3dx_pid_update(&pid_left, left_velocity);
+    dutycycle_left  += dutycycle_cross;
+    dutycycle_right -= dutycycle_cross;
 
-  p3dx_encoder_update(&encoders.right);
-  float right_velocity = p3dx_encoder_get_linear_velocity(&encoders.right);
-  int right_dutycycle = p3dx_pid_update(&pid_right, right_velocity);
-
-  float difference = left_velocity - right_velocity;
-  int cross_dutycycle = p3dx_pid_update(&pid_cross, difference);
-
-  left_dutycycle += cross_dutycycle;
-  right_dutycycle -= cross_dutycycle;
-
-  p3dx_motor_set_speed(&motors.left, left_dutycycle);
-  p3dx_motor_set_speed(&motors.right, right_dutycycle);
+    fmw_motor_set_speed(&motors.left, dutycycle_left);
+    fmw_motor_set_speed(&motors.right, dutycycle_right);
+  }
 }
 
 #if 0
@@ -465,8 +459,8 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   switch (GPIO_Pin) {
   case fault1_Pin:
   case fault2_Pin: {
-    p3dx_motor_brake(&motors.left);
-    p3dx_motor_brake(&motors.right);
+    fmw_motor_brake(&motors.left);
+    fmw_motor_brake(&motors.right);
     //stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
     /* otto_status = MessageStatusCode_Fault_HBridge; */

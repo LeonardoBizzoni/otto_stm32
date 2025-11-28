@@ -7,7 +7,7 @@
 #include <stdint.h>
 #include <assert.h>
 
-#include "p3dx/p3dx_messages.h"
+#include "firmware/fmw_messages.h"
 
 // TODO(lb): implement CRC
 
@@ -16,9 +16,9 @@ int main(void) {
   assert(fd);
 
 #if 0
-  P3DX_Message msg_config_robot = {
+  FMW_Message msg_config_robot = {
     .header = {
-      .type = P3DX_MessageType_Config_Robot,
+      .type = FMW_MessageType_Config_Robot,
       .crc = (uint32_t)-1,
     },
     .config_robot = {
@@ -29,11 +29,11 @@ int main(void) {
       .right_ticks_per_revolution = 350,
     },
   };
-  write(fd, &msg_config_robot, sizeof(P3DX_Message));
+  write(fd, &msg_config_robot, sizeof(FMW_Message));
 
-  P3DX_Message msg_config_pid = {
+  FMW_Message msg_config_pid = {
     .header = {
-      .type = P3DX_MessageType_Config_PID,
+      .type = FMW_MessageType_Config_PID,
       .crc = (uint32_t)-1,
     },
     .config_pid = {
@@ -54,20 +54,20 @@ int main(void) {
       },
     },
   };
-  write(fd, &msg_config_pid, sizeof(P3DX_Message));
+  write(fd, &msg_config_pid, sizeof(FMW_Message));
 
-  P3DX_Message msg_run = {
+  FMW_Message msg_run = {
     .header = {
-      .type = P3DX_MessageType_Run,
+      .type = FMW_MessageType_Run,
       .crc = (uint32_t)-1,
     },
   };
-  write(fd, &msg_run, sizeof(P3DX_Message));
+  write(fd, &msg_run, sizeof(FMW_Message));
 #else
-  P3DX_Message msgs[3] = {
+  FMW_Message msgs[3] = {
     {
       .header = {
-        .type = P3DX_MessageType_Config_Robot,
+        .type = FMW_MessageType_Config_Robot,
         .crc = (uint32_t)-1,
       },
       .config_robot = {
@@ -80,7 +80,7 @@ int main(void) {
     },
     {
       .header = {
-        .type = P3DX_MessageType_Config_PID,
+        .type = FMW_MessageType_Config_PID,
         .crc = (uint32_t)-1,
       },
       .config_pid = {
@@ -103,12 +103,12 @@ int main(void) {
     },
     {
       .header = {
-        .type = P3DX_MessageType_Run,
+        .type = FMW_MessageType_Run,
         .crc = (uint32_t)-1,
       },
     },
   };
-  write(fd, &msgs, 3 * sizeof(P3DX_Message));
+  write(fd, &msgs, 3 * sizeof(FMW_Message));
 #endif
 
   close(fd);

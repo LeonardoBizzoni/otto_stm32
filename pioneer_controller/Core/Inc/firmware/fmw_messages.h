@@ -1,5 +1,5 @@
-#ifndef P3DX_MESSAGE_H
-#define P3DX_MESSAGE_H
+#ifndef FMW_MESSAGE_H
+#define FMW_MESSAGE_H
 
 typedef union {
   struct {
@@ -8,7 +8,7 @@ typedef union {
     float derivative;
   };
   float values[3];
-} P3DX_PidConstants;
+} FMW_PidConstants;
 
 typedef uint16_t MessageStatusCode;
 enum {
@@ -19,49 +19,49 @@ enum {
   MessageStatusCode_Fault_HBridge  = 4,
 };
 
-typedef uint8_t P3DX_State;
+typedef uint8_t FMW_State;
 enum {
-  P3DX_State_Init,
-  P3DX_State_Error,
-  P3DX_State_Running,
+  FMW_State_Init,
+  FMW_State_Error,
+  FMW_State_Running,
 };
 
-typedef uint8_t P3DX_MessageType;
+typedef uint8_t FMW_MessageType;
 enum {
-  P3DX_MessageType_Error,
+  FMW_MessageType_Error,
 
-  P3DX_MessageType_Run,
-  P3DX_MessageType_Config_Robot,
-  P3DX_MessageType_Config_PID,
+  FMW_MessageType_Run,
+  FMW_MessageType_Config_Robot,
+  FMW_MessageType_Config_PID,
 
 
-  P3DX_MessageType_Status,
-  P3DX_MessageType_Velocity,
+  FMW_MessageType_Status,
+  FMW_MessageType_Velocity,
 
-  P3DX_MessageType_COUNT,
+  FMW_MessageType_COUNT,
 };
 
-typedef uint8_t P3DX_Error;
+typedef uint8_t FMW_Error;
 enum {
-  P3DX_Error_Unknown = 0,
+  FMW_Error_Unknown = 0,
 
-  P3DX_Error_UART_Crc,
-  P3DX_Error_UART_ReceiveTimeoutElapsed,
+  FMW_Error_UART_Crc,
+  FMW_Error_UART_ReceiveTimeoutElapsed,
 
-  P3DX_Error_Command_NotRecognized,
-  P3DX_Error_Command_NotAvailable,
+  FMW_Error_Command_NotRecognized,
+  FMW_Error_Command_NotAvailable,
 };
 
 #pragma pack(push, 1)
 typedef struct {
   struct {
-    P3DX_MessageType type;
+    FMW_MessageType type;
     uint32_t crc;
   } header;
 
   union {
     struct {
-      P3DX_Error reason;
+      FMW_Error reason;
       int32_t line;
       int32_t filename_size;
       const char *filename;
@@ -76,9 +76,9 @@ typedef struct {
     } config_robot;
 
     struct {
-      P3DX_PidConstants left;
-      P3DX_PidConstants right;
-      P3DX_PidConstants cross;
+      FMW_PidConstants left;
+      FMW_PidConstants right;
+      FMW_PidConstants cross;
     } config_pid;
 
     struct {
@@ -94,7 +94,7 @@ typedef struct {
       uint32_t crc;
     } velocity;
   };
-} P3DX_Message;
+} FMW_Message;
 #pragma pack(pop)
 
 #endif /* INC_COMMUNICATION_OTTO_MESSAGES_H_ */

@@ -62,16 +62,16 @@ extern int32_t pid_min;
 #define METERS_FROM_TICKS(Ticks, WheelCircumference, TicksPerRevolution) \
   ((Ticks * WheelCircumference) / TicksPerRevolution)
 
-#define p3dx_report_unless(Cond, MessageStatusCode)       \
+#define fmw_report_unless(Cond, MessageStatusCode)        \
   do {                                                    \
     if (!(Cond)) {                                        \
-      p3dx_report_handler(MessageStatusCode, __FILE__,    \
+      fmw_report_handler(MessageStatusCode, __FILE__,     \
                           ARRLENGTH(__FILE__), __LINE__); \
     }                                                     \
   } while (0)
 
-#define p3dx_report(MessageStatusCode)               \
-  p3dx_report_handler(MessageStatusCode, __FILE__,   \
+#define fmw_report(MessageStatusCode)                \
+  fmw_report_handler(MessageStatusCode, __FILE__,    \
                       ARRLENGTH(__FILE__), __LINE__)
 
 /* USER CODE END EM */
@@ -117,8 +117,8 @@ void Error_Handler(void);
 #define encoder_sx2_GPIO_Port GPIOB
 /* USER CODE BEGIN Private defines */
 
-#define P3DX_MOTOR_COUNT 2
-#define P3DX_ENCODER_COUNT 2
+#define FMW_MOTOR_COUNT 2
+#define FMW_ENCODER_COUNT 2
 
 #define FLOAT_MAX          3.40282347e+38f
 #define FLOAT_MIN_POSITIVE 1.17549435e-38f
