@@ -83,6 +83,7 @@ typedef struct {
       float voltage_red;
       float voltage_orange;
       float voltage_hysteresis;
+      uint32_t update_period;
     } config_led;
 
     struct {

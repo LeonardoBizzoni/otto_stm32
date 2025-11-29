@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include <math.h>   // M_PI
 #include <string.h> // memcpy
 
 #include "firmware/fmw_inc.h"
@@ -68,13 +69,13 @@ static union {
 } encoders = {
   .right = {
     .timer = &htim3,
-    .ticks_per_revolution = 200,
-    .wheel_circumference = 0.1f,
+    .ticks_per_revolution = 19150,
+    .wheel_circumference = (200.f * M_PI) / 1000.f,
   },
   .left = {
     .timer = &htim2,
-    .ticks_per_revolution = 200,
-    .wheel_circumference = 0.1f,
+    .ticks_per_revolution = 19150,
+    .wheel_circumference = (200.f * M_PI) / 1000.f,
   },
 };
 
@@ -135,14 +136,30 @@ static union {
   },
 };
 
+FMW_Led pled = {
+  .adc = &hadc1,
+  .timer = &htim1,
+  .timer_channel = TIM_CHANNEL_1,
+  .voltage_red = 11.5f,
+  .voltage_orange = 12.5f,
+  .voltage_hysteresis = 0.05f,
+  .state = FMW_LedState_Red,
+};
+
 int32_t pid_max = 0;
 int32_t pid_min = 0;
+
+static uint32_t led_update_period = 200;
 
 static volatile int32_t ticks_left  = 0;
 static volatile int32_t ticks_right = 0;
 static volatile float previous_tx_millis;
 static volatile uint8_t tx_done_flag = 1;
 /* volatile MessageStatusCode otto_status = MessageStatusCode_Waiting4Config; */
+
+static volatile uint32_t time_aux_press = 0;
+static volatile uint32_t time_aux2_press = 0;
+static volatile uint32_t time_last_motors = 0;
 static volatile FMW_State fmw_state = FMW_State_Init;
 
 /* USER CODE END PV */
@@ -765,6 +782,7 @@ __attribute__((noreturn)) void start(void) {
 
   fmw_encoder_init(encoders.values);
   fmw_motor_init(motors.values);
+  fmw_led_init(&pled);
 
   //right and left motors have the same parameters
   pid_max = (int32_t)htim4.Instance->ARR;
@@ -778,14 +796,20 @@ __attribute__((noreturn)) void start(void) {
   HAL_UART_Receive_DMA(&huart6, (uint8_t*) &vel_msg, 12);
 #endif
 
-  while (1);
+  for (uint32_t time_last_led_update = 0;;) {
+    uint32_t time_now = HAL_GetTick();
+    if (time_now - time_last_led_update >= led_update_period) {
+      time_last_led_update = time_now;
+      fmw_led_update(&pled);
+    }
+  }
 }
 
 void fmw_message_handle(FMW_State state, UART_HandleTypeDef *huart, int32_t wait_ms) {
   FMW_Message msg = {0};
   HAL_StatusTypeDef uart_packet_status = HAL_UART_Receive(huart, (uint8_t*)&msg, sizeof(msg), wait_ms);
-  fmw_report_unless(uart_packet_status == HAL_OK, FMW_Error_UART_ReceiveTimeoutElapsed);
-  fmw_report_unless(msg.header.type < FMW_MessageType_COUNT, FMW_Error_Command_NotRecognized);
+  FMW_REPORT_UNLESS(uart_packet_status == HAL_OK, FMW_Error_UART_ReceiveTimeoutElapsed);
+  FMW_REPORT_UNLESS(msg.header.type < FMW_MessageType_COUNT, FMW_Error_Command_NotRecognized);
 
   uint32_t crc_received = msg.header.crc;
   msg.header.crc = 0;
@@ -794,12 +818,12 @@ void fmw_message_handle(FMW_State state, UART_HandleTypeDef *huart, int32_t wait
     switch (msg.header.type) {
     case FMW_MessageType_Run: {
       uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header);
-      fmw_report_unless(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
       fmw_state = FMW_State_Running;
     } break;
     case FMW_MessageType_Config_Robot: {
       uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_robot);
-      fmw_report_unless(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
 
       odometry.baseline = msg.config_robot.baseline;
       encoders.left.wheel_circumference   = msg.config_robot.left_wheel_circumference;
@@ -809,11 +833,20 @@ void fmw_message_handle(FMW_State state, UART_HandleTypeDef *huart, int32_t wait
     } break;
     case FMW_MessageType_Config_PID: {
       uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_pid);
-      fmw_report_unless(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
 
       memcpy(&pid_left.ks,  &msg.config_pid.left,  sizeof pid_left.ks);
       memcpy(&pid_right.ks, &msg.config_pid.right, sizeof pid_right.ks);
       memcpy(&pid_cross.ks, &msg.config_pid.cross, sizeof pid_cross.ks);
+    } break;
+    case FMW_MessageType_Config_LED: {
+      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_led);
+      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+
+      pled.voltage_red = msg.config_led.voltage_red;
+      pled.voltage_orange = msg.config_led.voltage_orange;
+      pled.voltage_hysteresis = msg.config_led.voltage_hysteresis;
+      led_update_period = msg.config_led.update_period;
     } break;
     }
   } break;
@@ -827,6 +860,16 @@ void fmw_report_handler(FMW_Error error_code, const char *filename, int32_t file
   fmw_motor_brake(&motors.right);
   fmw_state = FMW_State_Error;
   for (;;) {}
+}
+
+// TODO(lb): move to fmw. maybe create a FMW_Buzzer?
+void buzzer_set(bool on) {
+  if (on) {
+    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, htim1.Init.Period / 2);
+    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+  } else {
+    HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+  }
 }
 
 // TIMER 100Hz PID control
@@ -927,13 +970,53 @@ void HAL_UART_ErrorCallback(UART_HandleTypeDef *UartHandle) {
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
-  //Blue user button on the NUCLEO board
+  uint32_t time_now = HAL_GetTick();
+
   switch (GPIO_Pin) {
+  case aux_Pin: {
+    if (time_now - time_aux_press > FMW_DEBOUNCE_DELAY) {
+      time_aux_press = time_now;
+      HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
+      HAL_GPIO_TogglePin(GPIOB, LD2_Pin);
+      HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
+      /* char msg[] = "AUX1 button pressed\r\n"; */
+      /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+    }
+  } break;
+  case aux2_Pin: {
+    if (time_now - time_aux2_press > FMW_DEBOUNCE_DELAY) {
+      time_aux2_press = time_now;
+      /* char msg[] = "AUX2 button pressed\r\n"; */
+      /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+    }
+  } break;
+  case motors_btn_Pin: {
+    if (time_now - time_last_motors > FMW_DEBOUNCE_DELAY) {
+      time_last_motors = time_now;
+      /* char msg[] = "Motors button pressed\r\n"; */
+      /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+      if(motors.left.active && motors.right.active) {
+        fmw_motor_disable(&motors.left);
+        fmw_motor_disable(&motors.right);
+        HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_RESET);
+        buzzer_set(false);
+        /* char msg[] = "Motors OFF\r\n"; */
+        /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+      } else {
+        fmw_motor_enable(&motors.left);
+        fmw_motor_enable(&motors.right);
+        HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_SET);
+        buzzer_set(false);
+        /* char msg[] = "Motors ON\r\n"; */
+        /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+      }
+    }
+  } break;
   case fault1_Pin:
   case fault2_Pin: {
     fmw_motor_brake(&motors.left);
     fmw_motor_brake(&motors.right);
-    //stop TIM6 interrupt (used for PID control)
+    // stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
     /* otto_status = MessageStatusCode_Fault_HBridge; */
   } break;

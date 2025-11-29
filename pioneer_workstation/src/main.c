@@ -11,11 +11,30 @@
 
 // TODO(lb): implement CRC
 
+static int serial_open(char *portname) {
+  int fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
+  assert(fd >= 0);
+  tcflush(fd, TCIOFLUSH);
+
+  struct termios tty;
+  assert(!tcgetattr(fd, &tty));
+  cfsetospeed(&tty, B115200); // output baud rate
+  cfsetispeed(&tty, B115200); //  input baud rate
+  tty.c_cflag = (tty.c_cflag & (tcflag_t)~CSIZE) | CS8; // 8-bit chars
+  tty.c_iflag &= (tcflag_t)~IGNBRK;                     // disable break processing
+  tty.c_cc[VMIN]  = 0;                                  // read doesn't block
+  tty.c_cc[VTIME] = 20;                                 // 2.0 seconds read timeout
+  tty.c_cflag &= (tcflag_t)~(PARENB | PARODD);          // no parity
+  tty.c_cflag &= (tcflag_t)~CSTOPB;                     // 1 stop bit
+  assert(!tcsetattr(fd, TCSANOW, &tty));
+  return fd;
+}
+
 int main(void) {
-  int fd = open("/dev/ttyACM0", O_RDWR);
+  int fd = serial_open("/dev/ttyACM0");
   assert(fd);
 
-#if 0
+#if 1
   FMW_Message msg_config_robot = {
     .header = {
       .type = FMW_MessageType_Config_Robot,

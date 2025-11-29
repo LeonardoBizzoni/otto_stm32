@@ -62,21 +62,6 @@ extern int32_t pid_min;
 
 #define ARRLENGTH(Arr) (sizeof((Arr)) / sizeof(*(Arr)))
 
-#define METERS_FROM_TICKS(Ticks, WheelCircumference, TicksPerRevolution) \
-  ((Ticks * WheelCircumference) / TicksPerRevolution)
-
-#define fmw_report_unless(Cond, MessageStatusCode)        \
-  do {                                                    \
-    if (!(Cond)) {                                        \
-      fmw_report_handler(MessageStatusCode, __FILE__,     \
-                          ARRLENGTH(__FILE__), __LINE__); \
-    }                                                     \
-  } while (0)
-
-#define fmw_report(MessageStatusCode)                \
-  fmw_report_handler(MessageStatusCode, __FILE__,    \
-                      ARRLENGTH(__FILE__), __LINE__)
-
 /* USER CODE END EM */
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);

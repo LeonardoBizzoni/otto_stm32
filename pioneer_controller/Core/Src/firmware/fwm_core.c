@@ -56,9 +56,9 @@ void fmw_encoder_update(FMW_Encoder *encoder) {
 }
 
 float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder) {
-  float meters = METERS_FROM_TICKS(encoder->ticks,
-                                   encoder->wheel_circumference,
-                                   encoder->ticks_per_revolution);
+  float meters = FMW_METERS_FROM_TICKS(encoder->ticks,
+                                       encoder->wheel_circumference,
+                                       encoder->ticks_per_revolution);
   float deltatime = encoder->current_millis - encoder->previous_millis;
   float linear_velocity = deltatime > 0.f ? (meters / (deltatime / 1000.f)) : 0.f;
   return linear_velocity;
@@ -102,11 +102,17 @@ int32_t fmw_pid_update(FMW_PidController *pid, float measure) {
 // ============================================================
 // LEDs
 void fmw_led_init(FMW_Led *led) {
-  HAL_TIM_PWM_Start(led->timer, led->channel);
-  __HAL_TIM_SET_COMPARE(led->timer, led->channel, 0);
+  HAL_TIM_PWM_Start(led->timer, led->timer_channel);
+  __HAL_TIM_SET_COMPARE(led->timer, led->timer_channel, 0);
 }
 
-void fmw_led_update(FMW_Led *led, float vin) {
+void fmw_led_update(FMW_Led *led) {
+  HAL_ADC_Start(led->adc);
+  HAL_ADC_PollForConversion(led->adc, HAL_MAX_DELAY);
+  uint32_t adc_val = HAL_ADC_GetValue(led->adc);
+  float v_adc = ((float)adc_val / FMW_ADC_RESOLUTION) * FMW_V_REF;
+  float vin = v_adc * FMW_VIN_SCALE_FACTOR;
+
   uint32_t duty = 0;
   uint32_t arr = led->timer->Instance->ARR;
 
@@ -147,5 +153,5 @@ void fmw_led_update(FMW_Led *led, float vin) {
   } break;
   }
 
-  __HAL_TIM_SET_COMPARE(led->timer, led->channel, duty);
+  __HAL_TIM_SET_COMPARE(led->timer, led->timer_channel, duty);
 }

@@ -52,7 +52,8 @@ enum {
 
 typedef struct {
   TIM_HandleTypeDef *const timer;
-  uint32_t channel;
+  ADC_HandleTypeDef *const adc;
+  uint32_t timer_channel;
   float voltage_red;
   float voltage_orange;
   float voltage_hysteresis;
@@ -74,9 +75,31 @@ int32_t fmw_encoder_count_get(const FMW_Encoder *encoder);
 int32_t fmw_pid_update(FMW_PidController *pid, float measure);
 
 void fmw_led_init(FMW_Led *led);
-void fmw_led_update(FMW_Led *led, float vin);
+void fmw_led_update(FMW_Led *led);
 
 void fmw_report_handler(FMW_Error error_code, const char *filename, int32_t filename_length, int32_t line);
 void fmw_message_handle(FMW_State state, UART_HandleTypeDef *huart, int32_t wait_ms);
+
+#define FMW_LED_UPDATE_PERIOD 200
+#define FMW_DEBOUNCE_DELAY 200
+
+#define FMW_V_REF 3.3f
+#define FMW_ADC_RESOLUTION 4095.0f
+#define FMW_VIN_SCALE_FACTOR 3.733f
+
+#define FMW_METERS_FROM_TICKS(Ticks, WheelCircumference, TicksPerRevolution) \
+  ((Ticks * WheelCircumference) / TicksPerRevolution)
+
+#define FMW_REPORT_UNLESS(Cond, MessageStatusCode)        \
+  do {                                                    \
+    if (!(Cond)) {                                        \
+      fmw_report_handler(MessageStatusCode, __FILE__,     \
+                          ARRLENGTH(__FILE__), __LINE__); \
+    }                                                     \
+  } while (0)
+
+#define FMW_REPORT(MessageStatusCode)                \
+  fmw_report_handler(MessageStatusCode, __FILE__,    \
+                      ARRLENGTH(__FILE__), __LINE__)
 
 #endif
