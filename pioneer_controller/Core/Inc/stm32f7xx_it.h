@@ -23,7 +23,7 @@
 #define __STM32F7xx_IT_H
 
 #ifdef __cplusplus
- extern "C" {
+extern "C" {
 #endif
 
 /* Private includes ----------------------------------------------------------*/
@@ -56,11 +56,10 @@ void SVC_Handler(void);
 void DebugMon_Handler(void);
 void PendSV_Handler(void);
 void SysTick_Handler(void);
+void EXTI3_IRQHandler(void);
+void EXTI4_IRQHandler(void);
+void ADC_IRQHandler(void);
 void EXTI15_10_IRQHandler(void);
-void TIM6_DAC_IRQHandler(void);
-void DMA2_Stream1_IRQHandler(void);
-void DMA2_Stream6_IRQHandler(void);
-void USART6_IRQHandler(void);
 /* USER CODE BEGIN EFP */
 
 /* USER CODE END EFP */
@@ -70,5 +69,3 @@ void USART6_IRQHandler(void);
 #endif
 
 #endif /* __STM32F7xx_IT_H */
-
-/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
