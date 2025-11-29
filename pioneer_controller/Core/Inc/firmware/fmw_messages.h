@@ -33,7 +33,7 @@ enum {
   FMW_MessageType_Run,
   FMW_MessageType_Config_Robot,
   FMW_MessageType_Config_PID,
-
+  FMW_MessageType_Config_LED,
 
   FMW_MessageType_Status,
   FMW_MessageType_Velocity,
@@ -74,12 +74,16 @@ typedef struct {
       float right_wheel_circumference;
       uint32_t right_ticks_per_revolution;
     } config_robot;
-
     struct {
       FMW_PidConstants left;
       FMW_PidConstants right;
       FMW_PidConstants cross;
     } config_pid;
+    struct {
+      float voltage_red;
+      float voltage_orange;
+      float voltage_hysteresis;
+    } config_led;
 
     struct {
       MessageStatusCode status_code;

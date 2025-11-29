@@ -7,6 +7,7 @@ void fmw_motor_init(FMW_Motor motors[FMW_MOTOR_COUNT]) {
   for (int32_t i = 0; i < FMW_MOTOR_COUNT; ++ i) {
     HAL_TIM_PWM_Start(motors[i].pwm_timer, motors[i].pwm_channel);
     motors[i].max_dutycycle = motors[i].pwm_timer->Instance->ARR;
+    motors[i].active = true;
     fmw_motor_brake(&motors[i]);
   }
 }
@@ -21,13 +22,19 @@ void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle) {
   HAL_GPIO_WritePin(motor->sleep_gpio_port, motor->sleep_pin, GPIO_PIN_SET);
 }
 
-inline void fmw_motor_brake(FMW_Motor *motor) {
-  HAL_GPIO_WritePin(motor->sleep_gpio_port, motor->sleep_pin, GPIO_PIN_SET);
+void fmw_motor_brake(FMW_Motor *motor) {
+  HAL_GPIO_WritePin(motor->sleep_gpio_port, motor->sleep_pin, FMW_MotorDirection_Backward);
   __HAL_TIM_SET_COMPARE(motor->pwm_timer, motor->pwm_channel, 0);
 }
 
-inline void fmw_motor_coast(FMW_Motor *motor) {
-  HAL_GPIO_WritePin(motor->sleep_gpio_port, motor->sleep_pin, GPIO_PIN_RESET);
+void fmw_motor_enable(FMW_Motor *motor) {
+  HAL_TIM_PWM_Start(motor->pwm_timer, motor->pwm_channel);
+  motor->active = true;
+}
+
+void fmw_motor_disable(FMW_Motor *motor) {
+  HAL_TIM_PWM_Stop(motor->pwm_timer, motor->pwm_channel);
+  motor->active = false;
 }
 
 // ============================================================
@@ -36,8 +43,8 @@ void fmw_encoder_init(FMW_Encoder encoders[FMW_ENCODER_COUNT]) {
   for (int32_t i = 0; i < FMW_ENCODER_COUNT; ++i) {
     HAL_TIM_Encoder_Start(encoders[i].timer, TIM_CHANNEL_ALL);
     fmw_encoder_count_reset(&encoders[i]);
-    encoders[i].current_millis = HAL_GetTick();
     encoders[i].previous_millis = 0;
+    encoders[i].current_millis = HAL_GetTick();
   }
 }
 
@@ -53,15 +60,15 @@ float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder) {
                                    encoder->wheel_circumference,
                                    encoder->ticks_per_revolution);
   float deltatime = encoder->current_millis - encoder->previous_millis;
-  float linear_velocity = deltatime ? (meters / (deltatime / 1000.f)) : 0.f;
+  float linear_velocity = deltatime > 0.f ? (meters / (deltatime / 1000.f)) : 0.f;
   return linear_velocity;
 }
 
-inline void fmw_encoder_count_reset(FMW_Encoder *encoder) {
+void fmw_encoder_count_reset(FMW_Encoder *encoder) {
   __HAL_TIM_SET_COUNTER(encoder->timer, (encoder->timer->Init.Period / 2));
 }
 
-inline int32_t fmw_encoder_count_get(const FMW_Encoder *encoder) {
+int32_t fmw_encoder_count_get(const FMW_Encoder *encoder) {
   return (int32_t)__HAL_TIM_GET_COUNTER(encoder->timer) - (encoder->timer->Init.Period / 2);
 }
 
@@ -90,4 +97,55 @@ int32_t fmw_pid_update(FMW_PidController *pid, float measure) {
   pid->error_sum -= pid->error;
   int32_t integer_output = CLAMP(((int32_t)output), pid_min, pid_max);
   return integer_output;
+}
+
+// ============================================================
+// LEDs
+void fmw_led_init(FMW_Led *led) {
+  HAL_TIM_PWM_Start(led->timer, led->channel);
+  __HAL_TIM_SET_COMPARE(led->timer, led->channel, 0);
+}
+
+void fmw_led_update(FMW_Led *led, float vin) {
+  uint32_t duty = 0;
+  uint32_t arr = led->timer->Instance->ARR;
+
+  float pled_red_on     = led->voltage_red - led->voltage_hysteresis;
+  float pled_red_off    = led->voltage_red + led->voltage_hysteresis;
+  float pled_orange_on  = led->voltage_orange - led->voltage_hysteresis;
+  float pled_orange_off = led->voltage_orange + led->voltage_hysteresis;
+
+  switch (led->state) {
+  case FMW_LedState_Red: {
+    if (vin > pled_red_off) {
+      led->state = FMW_LedState_Orange;
+    }
+  } break;
+  case FMW_LedState_Orange: {
+    if (vin <= pled_red_on) {
+      led->state = FMW_LedState_Red;
+    } else if (vin >= pled_orange_off) {
+      led->state = FMW_LedState_Green;
+    }
+  } break;
+  case FMW_LedState_Green: {
+    if (vin < pled_orange_on) {
+      led->state = FMW_LedState_Orange;
+    }
+  } break;
+  }
+
+  switch (led->state) {
+  case FMW_LedState_Red: {
+    duty = 0;
+  } break;
+  case FMW_LedState_Orange: {
+    duty = arr / 2;
+  } break;
+  case FMW_LedState_Green: {
+    duty = arr;
+  } break;
+  }
+
+  __HAL_TIM_SET_COMPARE(led->timer, led->channel, duty);
 }
