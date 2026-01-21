@@ -176,7 +176,7 @@ static void MX_TIM3_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_CRC_Init(void);
 /* USER CODE BEGIN PFP */
-__attribute__((noreturn)) void start(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -184,9 +184,9 @@ __attribute__((noreturn)) void start(void);
 /* USER CODE END 0 */
 
 /**
-  * @brief  The application entry point.
-  * @retval int
-  */
+ * @brief  The application entry point.
+ * @retval int
+ */
 int main(void)
 {
 
@@ -236,26 +236,26 @@ int main(void)
 }
 
 /**
-  * @brief System Clock Configuration
-  * @retval None
-  */
+ * @brief System Clock Configuration
+ * @retval None
+ */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
   RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
 
   /** Configure LSE Drive Capability
-  */
+   */
   HAL_PWR_EnableBkUpAccess();
 
   /** Configure the main internal regulator output voltage
-  */
+   */
   __HAL_RCC_PWR_CLK_ENABLE();
   __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE3);
 
   /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
+   * in the RCC_OscInitTypeDef structure.
+   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSE;
   RCC_OscInitStruct.HSEState = RCC_HSE_BYPASS;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
@@ -266,37 +266,37 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.PLL.PLLQ = 4;
   RCC_OscInitStruct.PLL.PLLR = 2;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
 
   /** Activate the Over-Drive mode
-  */
+   */
   if (HAL_PWREx_EnableOverDrive() != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
 
   /** Initializes the CPU, AHB and APB buses clocks
-  */
+   */
   RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+                                |RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
   RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
 }
 
 /**
-  * @brief ADC1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief ADC1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_ADC1_Init(void)
 {
 
@@ -311,7 +311,7 @@ static void MX_ADC1_Init(void)
   /* USER CODE END ADC1_Init 1 */
 
   /** Configure the global features of the ADC (Clock, Resolution, Data Alignment and number of conversion)
-  */
+   */
   hadc1.Instance = ADC1;
   hadc1.Init.ClockPrescaler = ADC_CLOCK_SYNC_PCLK_DIV4;
   hadc1.Init.Resolution = ADC_RESOLUTION_12B;
@@ -325,19 +325,19 @@ static void MX_ADC1_Init(void)
   hadc1.Init.DMAContinuousRequests = DISABLE;
   hadc1.Init.EOCSelection = ADC_EOC_SINGLE_CONV;
   if (HAL_ADC_Init(&hadc1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
 
   /** Configure for the selected ADC regular channel its corresponding rank in the sequencer and its sample time.
-  */
+   */
   sConfig.Channel = ADC_CHANNEL_2;
   sConfig.Rank = ADC_REGULAR_RANK_1;
   sConfig.SamplingTime = ADC_SAMPLETIME_84CYCLES;
   if (HAL_ADC_ConfigChannel(&hadc1, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN ADC1_Init 2 */
 
   /* USER CODE END ADC1_Init 2 */
@@ -345,10 +345,10 @@ static void MX_ADC1_Init(void)
 }
 
 /**
-  * @brief CRC Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief CRC Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_CRC_Init(void)
 {
 
@@ -366,9 +366,9 @@ static void MX_CRC_Init(void)
   hcrc.Init.OutputDataInversionMode = CRC_OUTPUTDATA_INVERSION_DISABLE;
   hcrc.InputDataFormat = CRC_INPUTDATA_FORMAT_BYTES;
   if (HAL_CRC_Init(&hcrc) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN CRC_Init 2 */
 
   /* USER CODE END CRC_Init 2 */
@@ -376,10 +376,10 @@ static void MX_CRC_Init(void)
 }
 
 /**
-  * @brief TIM1 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM1 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM1_Init(void)
 {
 
@@ -402,16 +402,16 @@ static void MX_TIM1_Init(void)
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterOutputTrigger2 = TIM_TRGO2_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
@@ -420,13 +420,13 @@ static void MX_TIM1_Init(void)
   sConfigOC.OCIdleState = TIM_OCIDLESTATE_RESET;
   sConfigOC.OCNIdleState = TIM_OCNIDLESTATE_RESET;
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   if (HAL_TIM_PWM_ConfigChannel(&htim1, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sBreakDeadTimeConfig.OffStateRunMode = TIM_OSSR_DISABLE;
   sBreakDeadTimeConfig.OffStateIDLEMode = TIM_OSSI_DISABLE;
   sBreakDeadTimeConfig.LockLevel = TIM_LOCKLEVEL_OFF;
@@ -439,9 +439,9 @@ static void MX_TIM1_Init(void)
   sBreakDeadTimeConfig.Break2Filter = 0;
   sBreakDeadTimeConfig.AutomaticOutput = TIM_AUTOMATICOUTPUT_DISABLE;
   if (HAL_TIMEx_ConfigBreakDeadTime(&htim1, &sBreakDeadTimeConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
@@ -450,10 +450,10 @@ static void MX_TIM1_Init(void)
 }
 
 /**
-  * @brief TIM2 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM2 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM2_Init(void)
 {
 
@@ -483,15 +483,15 @@ static void MX_TIM2_Init(void)
   sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
   sConfig.IC2Filter = 0;
   if (HAL_TIM_Encoder_Init(&htim2, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
@@ -499,10 +499,10 @@ static void MX_TIM2_Init(void)
 }
 
 /**
-  * @brief TIM3 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM3 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM3_Init(void)
 {
 
@@ -532,15 +532,15 @@ static void MX_TIM3_Init(void)
   sConfig.IC2Prescaler = TIM_ICPSC_DIV1;
   sConfig.IC2Filter = 0;
   if (HAL_TIM_Encoder_Init(&htim3, &sConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN TIM3_Init 2 */
 
   /* USER CODE END TIM3_Init 2 */
@@ -548,10 +548,10 @@ static void MX_TIM3_Init(void)
 }
 
 /**
-  * @brief TIM4 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM4 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM4_Init(void)
 {
 
@@ -572,27 +572,27 @@ static void MX_TIM4_Init(void)
   htim4.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim4.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_PWM_Init(&htim4) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim4, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sConfigOC.OCMode = TIM_OCMODE_PWM1;
   sConfigOC.Pulse = 0;
   sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
   sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
   if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   if (HAL_TIM_PWM_ConfigChannel(&htim4, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN TIM4_Init 2 */
 
   /* USER CODE END TIM4_Init 2 */
@@ -601,10 +601,10 @@ static void MX_TIM4_Init(void)
 }
 
 /**
-  * @brief TIM6 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief TIM6 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_TIM6_Init(void)
 {
 
@@ -623,15 +623,15 @@ static void MX_TIM6_Init(void)
   htim6.Init.Period = 65535;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim6) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim6, &sMasterConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN TIM6_Init 2 */
 
   /* USER CODE END TIM6_Init 2 */
@@ -639,10 +639,10 @@ static void MX_TIM6_Init(void)
 }
 
 /**
-  * @brief USART3 Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief USART3 Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_USART3_UART_Init(void)
 {
 
@@ -664,9 +664,9 @@ static void MX_USART3_UART_Init(void)
   huart3.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
   huart3.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
   if (HAL_UART_Init(&huart3) != HAL_OK)
-  {
-    Error_Handler();
-  }
+    {
+      Error_Handler();
+    }
   /* USER CODE BEGIN USART3_Init 2 */
 
   /* USER CODE END USART3_Init 2 */
@@ -674,10 +674,10 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
+ * @brief GPIO Initialization Function
+ * @param None
+ * @retval None
+ */
 static void MX_GPIO_Init(void)
 {
   GPIO_InitTypeDef GPIO_InitStruct = {0};
@@ -775,10 +775,21 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-__attribute__((noreturn)) void start(void) {
+void start(void) {
+  FMW_Message msg = {0};
   do {
-    fmw_message_handle(FMW_State_Init, &huart3, 180 * 1000);
-  } while(fmw_state != FMW_State_Running);
+    FMW_Result res = fmw_message_receive_uart(&huart3, 180 * 1000, &msg);
+    if (res != FMW_Result_Ok) {
+      FMW_RESULT_LOG_UART(&huart3, res);
+      continue;
+    }
+
+    res = fmw_message_handle(FMW_State_Init, &msg);
+    if (res != FMW_Result_Ok) {
+      FMW_RESULT_LOG_UART(&huart3, res);
+      continue;
+    }
+  } while(fmw_state == FMW_State_Init);
 
   fmw_encoder_init(encoders.values);
   fmw_motor_init(motors.values);
@@ -805,61 +816,172 @@ __attribute__((noreturn)) void start(void) {
   }
 }
 
-void fmw_message_handle(FMW_State state, UART_HandleTypeDef *huart, int32_t wait_ms) {
-  FMW_Message msg = {0};
-  HAL_StatusTypeDef uart_packet_status = HAL_UART_Receive(huart, (uint8_t*)&msg, sizeof(msg), wait_ms);
-  FMW_REPORT_UNLESS(uart_packet_status == HAL_OK, FMW_Error_UART_ReceiveTimeoutElapsed);
-  FMW_REPORT_UNLESS(msg.header.type < FMW_MessageType_COUNT, FMW_Error_Command_NotRecognized);
+FMW_Result fmw_message_receive_uart(UART_HandleTypeDef *huart, int32_t wait_ms, FMW_Message *msg) {
+  if (!(wait_ms >= 0))  { return FMW_Result_Error_UART_NegativeTimeout; }
 
-  uint32_t crc_received = msg.header.crc;
-  msg.header.crc = 0;
+  memset(msg, 0, sizeof *msg);
+
+  HAL_StatusTypeDef uart_packet_status = HAL_UART_Receive(huart, (uint8_t*)msg, sizeof(msg), wait_ms);
+  if (!(uart_packet_status == HAL_OK)) { return FMW_Result_Error_UART_ReceiveTimeoutElapsed; }
+  if (!(msg->header.type > FMW_MessageType_None && msg->header.type < FMW_MessageType_COUNT)) {
+    return FMW_Result_Error_Command_NotRecognized;
+  }
+  return FMW_Result_Ok;
+}
+
+FMW_Result fmw_message_handle(FMW_State state, const FMW_Message *msg) {
+  if (!(state > FMW_State_None && state < FMW_State_COUNT)) { return FMW_Result_Error_MessageHandler_InvalidState; }
+
+  // NOTE(lb): the `msg->header.crc != -1` checks are just because i haven't
+  //           implemented CRC into the program that sends these messages.
   switch (state) {
   case FMW_State_Init: {
-    switch (msg.header.type) {
+    switch (msg->header.type) {
     case FMW_MessageType_Run: {
-      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header);
-      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      if (msg->header.crc != -1) {
+        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type);
+        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
+      }
       fmw_state = FMW_State_Running;
     } break;
     case FMW_MessageType_Config_Robot: {
-      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_robot);
-      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      if (msg->header.crc != -1) {
+        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type + sizeof msg->config_robot);
+        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
+      }
 
-      odometry.baseline = msg.config_robot.baseline;
-      encoders.left.wheel_circumference   = msg.config_robot.left_wheel_circumference;
-      encoders.left.ticks_per_revolution  = msg.config_robot.left_ticks_per_revolution;
-      encoders.right.wheel_circumference  = msg.config_robot.right_wheel_circumference;
-      encoders.right.ticks_per_revolution = msg.config_robot.right_ticks_per_revolution;
+      if (!(msg->config_robot.baseline > 0.f)) {
+        return FMW_Result_Error_MessageHandler_Init_NonPositiveBaseline;
+      }
+      if (!(msg->config_robot.wheel_circumference_left > 0.f ||
+            msg->config_robot.wheel_circumference_right > 0.f)) {
+        return FMW_Result_Error_MessageHandler_Init_NonPositiveWheelCircumference;
+      }
+      if (!(msg->config_robot.ticks_per_revolution_left >= FMW_MIN_ACCEPTABLE_TICKS_PER_REVOLUTION &&
+            msg->config_robot.ticks_per_revolution_left < FMW_MAX_ACCEPTABLE_TICKS_PER_REVOLUTION)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidTicksPerRevolution;
+      }
+      if (!(msg->config_robot.ticks_per_revolution_right >= FMW_MIN_ACCEPTABLE_TICKS_PER_REVOLUTION &&
+            msg->config_robot.ticks_per_revolution_right < FMW_MAX_ACCEPTABLE_TICKS_PER_REVOLUTION)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidTicksPerRevolution;
+      }
+
+      odometry.baseline = msg->config_robot.baseline;
+      encoders.left.wheel_circumference   = msg->config_robot.wheel_circumference_left;
+      encoders.left.ticks_per_revolution  = msg->config_robot.ticks_per_revolution_left;
+      encoders.right.wheel_circumference  = msg->config_robot.wheel_circumference_right;
+      encoders.right.ticks_per_revolution = msg->config_robot.ticks_per_revolution_right;
     } break;
     case FMW_MessageType_Config_PID: {
-      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_pid);
-      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      if (msg->header.crc != -1) {
+        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type + sizeof msg->config_pid);
+        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
+      }
 
-      memcpy(&pid_left.ks,  &msg.config_pid.left,  sizeof pid_left.ks);
-      memcpy(&pid_right.ks, &msg.config_pid.right, sizeof pid_right.ks);
-      memcpy(&pid_cross.ks, &msg.config_pid.cross, sizeof pid_cross.ks);
+      if (!(msg->config_pid.left.proportional >= FMW_MIN_ACCEPTABLE_PID_PROPORTIONAL &&
+            msg->config_pid.left.proportional < FMW_MAX_ACCEPTABLE_PID_PROPORTIONAL)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDProportionalConstant;
+      }
+      if (!(msg->config_pid.cross.proportional >= FMW_MIN_ACCEPTABLE_PID_PROPORTIONAL &&
+            msg->config_pid.cross.proportional < FMW_MAX_ACCEPTABLE_PID_PROPORTIONAL)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDProportionalConstant;
+      }
+      if (!(msg->config_pid.right.proportional >= FMW_MIN_ACCEPTABLE_PID_PROPORTIONAL &&
+            msg->config_pid.right.proportional < FMW_MAX_ACCEPTABLE_PID_PROPORTIONAL)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDProportionalConstant;
+      }
+
+      if (!(msg->config_pid.left.integral >= FMW_MIN_ACCEPTABLE_PID_INTEGRAL &&
+            msg->config_pid.left.integral < FMW_MAX_ACCEPTABLE_PID_INTEGRAL)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDIntegralConstant;
+      }
+      if (!(msg->config_pid.cross.integral >= FMW_MIN_ACCEPTABLE_PID_INTEGRAL &&
+            msg->config_pid.cross.integral < FMW_MAX_ACCEPTABLE_PID_INTEGRAL)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDIntegralConstant;
+      }
+      if (!(msg->config_pid.right.integral >= FMW_MIN_ACCEPTABLE_PID_INTEGRAL &&
+            msg->config_pid.right.integral < FMW_MAX_ACCEPTABLE_PID_INTEGRAL)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDIntegralConstant;
+      }
+
+      if (!(msg->config_pid.left.derivative >= FMW_MIN_ACCEPTABLE_PID_DERIVATIVE &&
+            msg->config_pid.left.derivative < FMW_MAX_ACCEPTABLE_PID_DERIVATIVE)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDDerivativeConstant;
+      }
+      if (!(msg->config_pid.cross.derivative >= FMW_MIN_ACCEPTABLE_PID_DERIVATIVE &&
+            msg->config_pid.cross.derivative < FMW_MAX_ACCEPTABLE_PID_DERIVATIVE)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDDerivativeConstant;
+      }
+      if (!(msg->config_pid.right.derivative >= FMW_MIN_ACCEPTABLE_PID_DERIVATIVE &&
+            msg->config_pid.right.derivative < FMW_MAX_ACCEPTABLE_PID_DERIVATIVE)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidPIDDerivativeConstant;
+      }
+
+      memcpy(&pid_left.ks,  &msg->config_pid.left,  sizeof pid_left.ks);
+      memcpy(&pid_right.ks, &msg->config_pid.right, sizeof pid_right.ks);
+      memcpy(&pid_cross.ks, &msg->config_pid.cross, sizeof pid_cross.ks);
     } break;
     case FMW_MessageType_Config_LED: {
-      uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)&msg, sizeof msg.header.type + sizeof msg.config_led);
-      FMW_REPORT_UNLESS(crc_received == -1 || crc_computed == crc_received, FMW_Error_UART_Crc);
+      if (msg->header.crc != -1) {
+        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type + sizeof msg->config_led);
+        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
+      }
 
-      pled.voltage_red = msg.config_led.voltage_red;
-      pled.voltage_orange = msg.config_led.voltage_orange;
-      pled.voltage_hysteresis = msg.config_led.voltage_hysteresis;
-      led_update_period = msg.config_led.update_period;
+      if (!(msg->config_led.voltage_red >= FMW_MIN_ACCEPTABLE_LED_VOLTAGE &&
+            msg->config_led.voltage_red < FMW_MAX_ACCEPTABLE_LED_VOLTAGE)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
+      }
+      if (!(msg->config_led.voltage_orange >= FMW_MIN_ACCEPTABLE_LED_VOLTAGE &&
+            msg->config_led.voltage_orange < FMW_MAX_ACCEPTABLE_LED_VOLTAGE)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
+      }
+      if (!(msg->config_led.voltage_hysteresis >= FMW_MIN_ACCEPTABLE_LED_VOLTAGE &&
+            msg->config_led.voltage_hysteresis < FMW_MAX_ACCEPTABLE_LED_VOLTAGE)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
+      }
+      if (!(msg->config_led.update_period >= FMW_MIN_ACCEPTABLE_LED_UPDATE_PERIOD &&
+            msg->config_led.update_period < FMW_MAX_ACCEPTABLE_LED_UPDATE_PERIOD)) {
+        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
+      }
+
+      pled.voltage_red = msg->config_led.voltage_red;
+      pled.voltage_orange = msg->config_led.voltage_orange;
+      pled.voltage_hysteresis = msg->config_led.voltage_hysteresis;
+      led_update_period = msg->config_led.update_period;
     } break;
     }
   } break;
   }
+
+  return FMW_Result_Ok;
 }
 
-void fmw_report_handler(FMW_Error error_code, const char *filename, int32_t filename_length, int32_t line) {
-  // TODO(lb): send error message via UART,
-  //           go back to some sort of "initialization" state
-  fmw_motor_brake(&motors.left);
-  fmw_motor_brake(&motors.right);
-  fmw_state = FMW_State_Error;
-  for (;;) {}
+int32_t fmw_result_format(char buffer[], size_t buffer_size,
+                          const char *filename, int16_t filename_length,
+                          int32_t line, FMW_Result result) {
+  static const char* const variant_strings[] = {
+    #define X(Variant) #Variant,
+    FMW_RESULT_VARIANTS(X)
+    #undef X
+  };
+
+  return snprintf(buffer, buffer_size,
+                  "[%.*s:%ld] failed with result: %s\r\n",
+                  filename_length, filename, line,
+                  variant_strings[result]);
+}
+
+void fmw_result_log_uart(UART_HandleTypeDef *huart, FMW_Result result,
+                         const char *filename, int16_t filename_length,
+                         int32_t line) {
+  if (fmw_state != FMW_State_Init) {
+    fmw_motor_brake(&motors.left);
+    fmw_motor_brake(&motors.right);
+  }
+
+  char buff[512] = {0};
+  int32_t length = fmw_result_format(buff, sizeof buff, filename, filename_length, line, result);
+  HAL_UART_Transmit(huart, (uint8_t*)buff, length, HAL_MAX_DELAY);
 }
 
 // TODO(lb): move to fmw. maybe create a FMW_Buzzer?
@@ -1025,9 +1147,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
 /* USER CODE END 4 */
 
 /**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
+ * @brief  This function is executed in case of error occurrence.
+ * @retval None
+ */
 void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
@@ -1037,12 +1159,12 @@ void Error_Handler(void)
 }
 #ifdef USE_FULL_ASSERT
 /**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
+ * @brief  Reports the name of the source file and the source line number
+ *         where the assert_param error has occurred.
+ * @param  file: pointer to the source file name
+ * @param  line: assert_param error line source number
+ * @retval None
+ */
 void assert_failed(uint8_t *file, uint32_t line)
 {
   /* USER CODE BEGIN 6 */

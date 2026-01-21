@@ -32,7 +32,7 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -61,6 +61,8 @@ extern int32_t pid_min;
 #define CLAMP(V, Min, Max) CLAMP_BOT(CLAMP_TOP(V, Max), Min)
 
 #define ARRLENGTH(Arr) (sizeof((Arr)) / sizeof(*(Arr)))
+
+void start(void) __attribute__((noreturn));
 
 /* USER CODE END EM */
 
