@@ -167,9 +167,6 @@ void Error_Handler(void);
 #define encoder_sx2_Pin GPIO_PIN_3
 #define encoder_sx2_GPIO_Port GPIOB
 
-#define FMW_MOTOR_COUNT 2
-#define FMW_ENCODER_COUNT 2
-
 #define FLOAT_MAX          3.40282347e+38f
 #define FLOAT_MIN_POSITIVE 1.17549435e-38f
 

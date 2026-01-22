@@ -75,19 +75,18 @@ enum {
 
 #define FMW_RESULT_VARIANTS(X)                                                  \
   X(FMW_Result_Ok)                                                              \
-  X(FMW_Result_Error_NilMessage)                                                \
   X(FMW_Result_Error_UART_Crc)                                                  \
-  X(FMW_Result_Error_UART_NilHandle)                                            \
   X(FMW_Result_Error_UART_NegativeTimeout)                                      \
   X(FMW_Result_Error_UART_ReceiveTimeoutElapsed)                                \
+  X(FMW_Result_Error_Encoder_InvalidTimer)                                      \
+  X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution)                     \
+  X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference)                     \
+  X(FMW_Result_Error_Encoder_GetTick)                                           \
   X(FMW_Result_Error_MessageHandler_InvalidState)                               \
   X(FMW_Result_Error_MessageHandler_Init_NonPositiveBaseline)                   \
   X(FMW_Result_Error_MessageHandler_Init_NonPositiveWheelCircumference)         \
-  X(FMW_Result_Error_MessageHandler_Init_InvalidTicksPerRevolution)             \
-  X(FMW_Result_Error_MessageHandler_Init_InvalidPIDProportionalConstant)        \
-  X(FMW_Result_Error_MessageHandler_Init_InvalidPIDIntegralConstant)            \
-  X(FMW_Result_Error_MessageHandler_Init_InvalidPIDDerivativeConstant)          \
-  X(FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage)                     \
+  X(FMW_Result_Error_MessageHandler_Init_NonPositiveTicksPerRevolution)         \
+  X(FMW_Result_Error_MessageHandler_Init_NonPositiveLEDUpdatePeriod)            \
   X(FMW_Result_Error_Command_NotRecognized)                                     \
   X(FMW_Result_Error_Command_NotAvailable)                                      \
   X(FMW_Result_COUNT)
@@ -138,12 +137,10 @@ typedef struct {
       uint16_t delta_millis;
       int32_t left_ticks;
       int32_t right_ticks;
-      uint32_t crc;
     } status;
     struct {
-      float linear_velocity;
-      float angular_velocity;
-      uint32_t crc;
+      float linear;
+      float angular;
     } velocity;
   };
 } FMW_Message;

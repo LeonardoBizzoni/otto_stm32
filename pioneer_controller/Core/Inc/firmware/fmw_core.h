@@ -48,6 +48,7 @@ enum {
   FMW_LedState_Red    = 0,
   FMW_LedState_Orange = 1,
   FMW_LedState_Green  = 2,
+  FMW_LedState_COUNT,
 };
 
 typedef struct {
@@ -60,19 +61,24 @@ typedef struct {
   FMW_LedState state;
 } FMW_Led;
 
-void fmw_motor_init(FMW_Motor motors[FMW_MOTOR_COUNT])                  __attribute__((nonnull));
+typedef void fmw_interrupt(void *user_data);
+
+void fmw_motor_init(FMW_Motor motors[], int32_t count)                  __attribute__((nonnull));
 void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle)          __attribute__((nonnull));
 void fmw_motor_brake(FMW_Motor *motor)                                  __attribute__((nonnull));
 void fmw_motor_enable(FMW_Motor * motor)                                __attribute__((nonnull));
 void fmw_motor_disable(FMW_Motor * motor)                               __attribute__((nonnull));
 
-void fmw_encoder_init(FMW_Encoder encoders[FMW_ENCODER_COUNT])          __attribute__((nonnull));
-void fmw_encoder_update(FMW_Encoder *encoder)                           __attribute__((nonnull));
+void fmw_encoder_init(FMW_Encoder encoders[], int32_t count)            __attribute__((nonnull));
+FMW_Result fmw_encoder_update(FMW_Encoder *encoder)                     __attribute__((nonnull));
 float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder)       __attribute__((warn_unused_result, nonnull));
 void fmw_encoder_count_reset(FMW_Encoder *encoder)                      __attribute__((nonnull));
 int32_t fmw_encoder_count_get(const FMW_Encoder *encoder)               __attribute__((warn_unused_result, nonnull));
 
 int32_t fmw_pid_update(FMW_PidController *pid, float measure)           __attribute__((warn_unused_result, nonnull));
+
+void fmw_odometry_setpoint_from_velocities(FMW_Odometry *odometry,
+                                           float linear, float angular) __attribute__((nonnull));
 
 void fmw_led_init(FMW_Led *led)                                         __attribute__((nonnull));
 void fmw_led_update(FMW_Led *led)                                       __attribute__((nonnull));
@@ -83,7 +89,10 @@ void fmw_result_log_uart(UART_HandleTypeDef *huart, FMW_Result result,
 
 FMW_Result fmw_message_receive_uart(UART_HandleTypeDef *huart,
                                     int32_t wait_ms, FMW_Message *msg)  __attribute__((warn_unused_result, nonnull));
-FMW_Result fmw_message_handle(FMW_State state, const FMW_Message *msg)  __attribute__((warn_unused_result, nonnull));
+
+int32_t fmw_result_format(char buffer[], size_t buffer_size,
+                          const char *filename, int16_t filename_length,
+                          int32_t line, FMW_Result result)              __attribute__((warn_unused_result, nonnull));
 
 #define FMW_LED_UPDATE_PERIOD 200
 #define FMW_DEBOUNCE_DELAY 200

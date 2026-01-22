@@ -32,7 +32,8 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-
+FMW_Result message_handler(FMW_Message *msg)
+  __attribute__((warn_unused_result, nonnull));
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -41,7 +42,8 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define MOTOR_COUNT 2
+#define ENCODER_COUNT 2
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -59,9 +61,11 @@ UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
 
+#define UART_MESSANGER_HANDLE (&huart3)
+
 // TODO(lb): fill with sensible default
 static union {
-  FMW_Encoder values[2];
+  FMW_Encoder values[ENCODER_COUNT];
   struct {
     FMW_Encoder right;
     FMW_Encoder left;
@@ -112,7 +116,7 @@ FMW_PidController pid_cross = {
 };
 
 static union {
-  FMW_Motor values[2];
+  FMW_Motor values[MOTOR_COUNT];
   struct {
     FMW_Motor right;
     FMW_Motor left;
@@ -157,6 +161,8 @@ static volatile float previous_tx_millis;
 static volatile uint8_t tx_done_flag = 1;
 /* volatile MessageStatusCode otto_status = MessageStatusCode_Waiting4Config; */
 
+static volatile FMW_Message run_msg = {0};
+
 static volatile uint32_t time_aux_press = 0;
 static volatile uint32_t time_aux2_press = 0;
 static volatile uint32_t time_last_motors = 0;
@@ -183,10 +189,6 @@ static void MX_CRC_Init(void);
 /* USER CODE BEGIN 0 */
 /* USER CODE END 0 */
 
-/**
- * @brief  The application entry point.
- * @retval int
- */
 int main(void)
 {
 
@@ -776,36 +778,31 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void start(void) {
-  FMW_Message msg = {0};
-  do {
-    FMW_Result res = fmw_message_receive_uart(&huart3, 180 * 1000, &msg);
+  for (FMW_Message msg = {0}; fmw_state == FMW_State_Init; ) {
+    FMW_Result res = fmw_message_receive_uart(UART_MESSANGER_HANDLE, 180 * 1000, &msg);
     if (res != FMW_Result_Ok) {
-      FMW_RESULT_LOG_UART(&huart3, res);
-      continue;
+      FMW_RESULT_LOG_UART(UART_MESSANGER_HANDLE, res);
+    } else {
+      res = message_handler(&msg);
+      if (res != FMW_Result_Ok) { FMW_RESULT_LOG_UART(UART_MESSANGER_HANDLE, res); }
     }
+  }
 
-    res = fmw_message_handle(FMW_State_Init, &msg);
-    if (res != FMW_Result_Ok) {
-      FMW_RESULT_LOG_UART(&huart3, res);
-      continue;
-    }
-  } while(fmw_state == FMW_State_Init);
-
-  fmw_encoder_init(encoders.values);
-  fmw_motor_init(motors.values);
+  fmw_encoder_init(encoders.values, ENCODER_COUNT);
+  fmw_motor_init(motors.values, MOTOR_COUNT);
   fmw_led_init(&pled);
 
-  //right and left motors have the same parameters
+  // Right and left motors have the same parameters
   pid_max = (int32_t)htim4.Instance->ARR;
   pid_min = -pid_max;
+  assert(pid_max > pid_min);
 
-  //Enables TIM6 interrupt (used for PID control)
-  HAL_TIM_Base_Start_IT(&htim6);
+  // Enables TIM6 interrupt (used for PID control)
+  HAL_StatusTypeDef timer_status = HAL_TIM_Base_Start_IT(&htim6);
+  assert(timer_status == HAL_OK);
 
-#if 0
-  //Enables UART RX interrupt
-  HAL_UART_Receive_DMA(&huart6, (uint8_t*) &vel_msg, 12);
-#endif
+  // Enables UART RX interrupt
+  HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&run_msg, sizeof run_msg);
 
   for (uint32_t time_last_led_update = 0;;) {
     uint32_t time_now = HAL_GetTick();
@@ -816,132 +813,50 @@ void start(void) {
   }
 }
 
-FMW_Result fmw_message_receive_uart(UART_HandleTypeDef *huart, int32_t wait_ms, FMW_Message *msg) {
-  if (!(wait_ms >= 0))  { return FMW_Result_Error_UART_NegativeTimeout; }
-
-  memset(msg, 0, sizeof *msg);
-
-  HAL_StatusTypeDef uart_packet_status = HAL_UART_Receive(huart, (uint8_t*)msg, sizeof(msg), wait_ms);
-  if (!(uart_packet_status == HAL_OK)) { return FMW_Result_Error_UART_ReceiveTimeoutElapsed; }
-  if (!(msg->header.type > FMW_MessageType_None && msg->header.type < FMW_MessageType_COUNT)) {
-    return FMW_Result_Error_Command_NotRecognized;
-  }
-  return FMW_Result_Ok;
-}
-
-FMW_Result fmw_message_handle(FMW_State state, const FMW_Message *msg) {
-  if (!(state > FMW_State_None && state < FMW_State_COUNT)) { return FMW_Result_Error_MessageHandler_InvalidState; }
-
+FMW_Result message_handler(FMW_Message *msg) {
   // NOTE(lb): the `msg->header.crc != -1` checks are just because i haven't
   //           implemented CRC into the program that sends these messages.
-  switch (state) {
+  //           i also don't know if the code to calculate CRC is correct.
+  if (msg->header.crc != -1) {
+    uint32_t crc_received = msg->header.crc;
+    msg->header.crc = 0;
+    uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof *msg);
+    if (!(crc_computed == crc_received)) { return FMW_Result_Error_UART_Crc; }
+  }
+
+  switch (fmw_state) {
   case FMW_State_Init: {
     switch (msg->header.type) {
     case FMW_MessageType_Run: {
-      if (msg->header.crc != -1) {
-        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type);
-        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
-      }
       fmw_state = FMW_State_Running;
     } break;
     case FMW_MessageType_Config_Robot: {
-      if (msg->header.crc != -1) {
-        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type + sizeof msg->config_robot);
-        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
-      }
-
       if (!(msg->config_robot.baseline > 0.f)) {
         return FMW_Result_Error_MessageHandler_Init_NonPositiveBaseline;
       }
-      if (!(msg->config_robot.wheel_circumference_left > 0.f ||
+      if (!(msg->config_robot.wheel_circumference_left > 0.f &&
             msg->config_robot.wheel_circumference_right > 0.f)) {
         return FMW_Result_Error_MessageHandler_Init_NonPositiveWheelCircumference;
       }
-      if (!(msg->config_robot.ticks_per_revolution_left >= FMW_MIN_ACCEPTABLE_TICKS_PER_REVOLUTION &&
-            msg->config_robot.ticks_per_revolution_left < FMW_MAX_ACCEPTABLE_TICKS_PER_REVOLUTION)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidTicksPerRevolution;
-      }
-      if (!(msg->config_robot.ticks_per_revolution_right >= FMW_MIN_ACCEPTABLE_TICKS_PER_REVOLUTION &&
-            msg->config_robot.ticks_per_revolution_right < FMW_MAX_ACCEPTABLE_TICKS_PER_REVOLUTION)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidTicksPerRevolution;
+      if (!(msg->config_robot.ticks_per_revolution_left > 0 &&
+            msg->config_robot.ticks_per_revolution_right > 0)) {
+        return FMW_Result_Error_MessageHandler_Init_NonPositiveTicksPerRevolution;
       }
 
-      odometry.baseline = msg->config_robot.baseline;
-      encoders.left.wheel_circumference   = msg->config_robot.wheel_circumference_left;
-      encoders.left.ticks_per_revolution  = msg->config_robot.ticks_per_revolution_left;
-      encoders.right.wheel_circumference  = msg->config_robot.wheel_circumference_right;
-      encoders.right.ticks_per_revolution = msg->config_robot.ticks_per_revolution_right;
+      odometry.baseline                         = msg->config_robot.baseline;
+      encoders.left.wheel_circumference         = msg->config_robot.wheel_circumference_left;
+      encoders.left.ticks_per_revolution        = msg->config_robot.ticks_per_revolution_left;
+      encoders.right.wheel_circumference        = msg->config_robot.wheel_circumference_right;
+      encoders.right.ticks_per_revolution       = msg->config_robot.ticks_per_revolution_right;
     } break;
     case FMW_MessageType_Config_PID: {
-      if (msg->header.crc != -1) {
-        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type + sizeof msg->config_pid);
-        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
-      }
-
-      if (!(msg->config_pid.left.proportional >= FMW_MIN_ACCEPTABLE_PID_PROPORTIONAL &&
-            msg->config_pid.left.proportional < FMW_MAX_ACCEPTABLE_PID_PROPORTIONAL)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDProportionalConstant;
-      }
-      if (!(msg->config_pid.cross.proportional >= FMW_MIN_ACCEPTABLE_PID_PROPORTIONAL &&
-            msg->config_pid.cross.proportional < FMW_MAX_ACCEPTABLE_PID_PROPORTIONAL)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDProportionalConstant;
-      }
-      if (!(msg->config_pid.right.proportional >= FMW_MIN_ACCEPTABLE_PID_PROPORTIONAL &&
-            msg->config_pid.right.proportional < FMW_MAX_ACCEPTABLE_PID_PROPORTIONAL)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDProportionalConstant;
-      }
-
-      if (!(msg->config_pid.left.integral >= FMW_MIN_ACCEPTABLE_PID_INTEGRAL &&
-            msg->config_pid.left.integral < FMW_MAX_ACCEPTABLE_PID_INTEGRAL)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDIntegralConstant;
-      }
-      if (!(msg->config_pid.cross.integral >= FMW_MIN_ACCEPTABLE_PID_INTEGRAL &&
-            msg->config_pid.cross.integral < FMW_MAX_ACCEPTABLE_PID_INTEGRAL)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDIntegralConstant;
-      }
-      if (!(msg->config_pid.right.integral >= FMW_MIN_ACCEPTABLE_PID_INTEGRAL &&
-            msg->config_pid.right.integral < FMW_MAX_ACCEPTABLE_PID_INTEGRAL)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDIntegralConstant;
-      }
-
-      if (!(msg->config_pid.left.derivative >= FMW_MIN_ACCEPTABLE_PID_DERIVATIVE &&
-            msg->config_pid.left.derivative < FMW_MAX_ACCEPTABLE_PID_DERIVATIVE)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDDerivativeConstant;
-      }
-      if (!(msg->config_pid.cross.derivative >= FMW_MIN_ACCEPTABLE_PID_DERIVATIVE &&
-            msg->config_pid.cross.derivative < FMW_MAX_ACCEPTABLE_PID_DERIVATIVE)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDDerivativeConstant;
-      }
-      if (!(msg->config_pid.right.derivative >= FMW_MIN_ACCEPTABLE_PID_DERIVATIVE &&
-            msg->config_pid.right.derivative < FMW_MAX_ACCEPTABLE_PID_DERIVATIVE)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidPIDDerivativeConstant;
-      }
-
       memcpy(&pid_left.ks,  &msg->config_pid.left,  sizeof pid_left.ks);
       memcpy(&pid_right.ks, &msg->config_pid.right, sizeof pid_right.ks);
       memcpy(&pid_cross.ks, &msg->config_pid.cross, sizeof pid_cross.ks);
     } break;
     case FMW_MessageType_Config_LED: {
-      if (msg->header.crc != -1) {
-        uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof msg->header.type + sizeof msg->config_led);
-        if (!(crc_computed == msg->header.crc)) { return FMW_Result_Error_UART_Crc; }
-      }
-
-      if (!(msg->config_led.voltage_red >= FMW_MIN_ACCEPTABLE_LED_VOLTAGE &&
-            msg->config_led.voltage_red < FMW_MAX_ACCEPTABLE_LED_VOLTAGE)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
-      }
-      if (!(msg->config_led.voltage_orange >= FMW_MIN_ACCEPTABLE_LED_VOLTAGE &&
-            msg->config_led.voltage_orange < FMW_MAX_ACCEPTABLE_LED_VOLTAGE)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
-      }
-      if (!(msg->config_led.voltage_hysteresis >= FMW_MIN_ACCEPTABLE_LED_VOLTAGE &&
-            msg->config_led.voltage_hysteresis < FMW_MAX_ACCEPTABLE_LED_VOLTAGE)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
-      }
-      if (!(msg->config_led.update_period >= FMW_MIN_ACCEPTABLE_LED_UPDATE_PERIOD &&
-            msg->config_led.update_period < FMW_MAX_ACCEPTABLE_LED_UPDATE_PERIOD)) {
-        return FMW_Result_Error_MessageHandler_Init_InvalidLEDVoltage;
+      if (!(msg->config_led.update_period > 0)) {
+        return FMW_Result_Error_MessageHandler_Init_NonPositiveLEDUpdatePeriod;
       }
 
       pled.voltage_red = msg->config_led.voltage_red;
@@ -949,39 +864,44 @@ FMW_Result fmw_message_handle(FMW_State state, const FMW_Message *msg) {
       pled.voltage_hysteresis = msg->config_led.voltage_hysteresis;
       led_update_period = msg->config_led.update_period;
     } break;
+    case FMW_MessageType_Status: // NOTE(lb): allow status messages in init mode?
+    case FMW_MessageType_Velocity: {
+      return FMW_Result_Error_Command_NotAvailable;
+    } break;
+    default: {
+      return FMW_Result_Error_Command_NotRecognized;
+    } break;
+    }
+  } break;
+  case FMW_State_Running: {
+    switch (msg->header.type) {
+    case FMW_MessageType_Status: { // TODO(lb): this should be `GetStatus` or something like that.
+      int32_t current_ticks_left = ticks_left + fmw_encoder_count_get(&encoders.left);
+      int32_t current_ticks_right = ticks_right + fmw_encoder_count_get(&encoders.right);
+      (void)current_ticks_left;
+      (void)current_ticks_right;
+      // TODO(lb): add the rest.
+    } break;
+    case FMW_MessageType_Velocity: {
+      fmw_odometry_setpoint_from_velocities(&odometry, msg->velocity.linear, msg->velocity.angular);
+      pid_left.setpoint  = odometry.setpoint_left;
+      pid_right.setpoint = odometry.setpoint_right;
+      pid_cross.setpoint = odometry.setpoint_left - odometry.setpoint_right;
+    } break;
+    case FMW_MessageType_Run:
+    case FMW_MessageType_Config_Robot:
+    case FMW_MessageType_Config_PID:
+    case FMW_MessageType_Config_LED: {
+      return FMW_Result_Error_Command_NotAvailable;
+    } break;
+    default: {
+      return FMW_Result_Error_Command_NotRecognized;
+    } break;
     }
   } break;
   }
 
   return FMW_Result_Ok;
-}
-
-int32_t fmw_result_format(char buffer[], size_t buffer_size,
-                          const char *filename, int16_t filename_length,
-                          int32_t line, FMW_Result result) {
-  static const char* const variant_strings[] = {
-    #define X(Variant) #Variant,
-    FMW_RESULT_VARIANTS(X)
-    #undef X
-  };
-
-  return snprintf(buffer, buffer_size,
-                  "[%.*s:%ld] failed with result: %s\r\n",
-                  filename_length, filename, line,
-                  variant_strings[result]);
-}
-
-void fmw_result_log_uart(UART_HandleTypeDef *huart, FMW_Result result,
-                         const char *filename, int16_t filename_length,
-                         int32_t line) {
-  if (fmw_state != FMW_State_Init) {
-    fmw_motor_brake(&motors.left);
-    fmw_motor_brake(&motors.right);
-  }
-
-  char buff[512] = {0};
-  int32_t length = fmw_result_format(buff, sizeof buff, filename, filename_length, line, result);
-  HAL_UART_Transmit(huart, (uint8_t*)buff, length, HAL_MAX_DELAY);
 }
 
 // TODO(lb): move to fmw. maybe create a FMW_Buzzer?
@@ -996,7 +916,7 @@ void buzzer_set(bool on) {
 
 // TIMER 100Hz PID control
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-  // NOTE(lb): for transmission
+  // NOTE(lb): metrics taken for transmission
   ticks_left  += fmw_encoder_count_get(&encoders.left);
   ticks_right += fmw_encoder_count_get(&encoders.right);
 
@@ -1018,69 +938,48 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   }
 }
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
+  if (huart == UART_MESSANGER_HANDLE) {
+    // NOTE(lb): i don't think another interrupt of this kind can occur
+    //           while i'm still handling the previous one so casting away
+    //           volatile should be fine.
+    FMW_Result res = message_handler((FMW_Message*)&run_msg);
+    if (res != FMW_Result_Ok) { FMW_RESULT_LOG_UART(huart, res); }
+
+    // NOTE(lb): listen for the next message.
+    HAL_UART_Receive_DMA(huart, (uint8_t*)&run_msg, sizeof run_msg);
+
 #if 0
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle) {
-  /*
-   * Manage received message
-   */
+    /*
+     * Manage new transmission
+     */
 
-  uint32_t crc_rx = HAL_CRC_Calculate(&hcrc, (uint32_t*) &vel_msg, 8);
+    int32_t left_ticks_tx = left_ticks + encoder_count_get(&encoders.left);
+    int32_t right_ticks_tx = right_ticks + encoder_count_get(&encoders.right);
 
-  float linear_velocity;
-  float angular_velocity;
+    status_msg.left_ticks = left_ticks_tx;
+    status_msg.right_ticks = right_ticks_tx;
 
-  if (crc_rx == vel_msg.crc) {
-    linear_velocity = vel_msg.linear_velocity;
-    angular_velocity = vel_msg.angular_velocity;
-    otto_status = MessageStatusCode_Running;
-  } else {
-    linear_velocity = 0;
-    angular_velocity = 0;
-    otto_status = MessageStatusCode_Error_Velocity;
-  }
+    left_ticks = 0;
+    right_ticks = 0;
 
-  odometry_setpoint_from_cmdvel(&odom, linear_velocity, angular_velocity);
-  float left_setpoint = odom.velocity.left;
-  float right_setpoint = odom.velocity.right;
+    float current_tx_millis = HAL_GetTick();
+    status_msg.delta_millis = current_tx_millis - previous_tx_millis;
+    previous_tx_millis = current_tx_millis;
 
-  pid_left.setpoint = left_setpoint;
-  pid_right.setpoint = right_setpoint;
+    status_msg.status = otto_status;
 
-  float cross_setpoint = left_setpoint - right_setpoint;
-  pid_cross.setpoint = cross_setpoint;
+    uint32_t crc_tx = HAL_CRC_Calculate(&hcrc, (uint32_t*) &status_msg, 12);
 
-  /*
-   * Manage new transmission
-   */
+    status_msg.crc = crc_tx;
 
-  int32_t left_ticks_tx = left_ticks + encoder_count_get(&encoders.left);
-  int32_t right_ticks_tx = right_ticks + encoder_count_get(&encoders.right);
-
-  status_msg.left_ticks = left_ticks_tx;
-  status_msg.right_ticks = right_ticks_tx;
-
-  left_ticks = 0;
-  right_ticks = 0;
-
-  float current_tx_millis = HAL_GetTick();
-  status_msg.delta_millis = current_tx_millis - previous_tx_millis;
-  previous_tx_millis = current_tx_millis;
-
-  status_msg.status = otto_status;
-
-  uint32_t crc_tx = HAL_CRC_Calculate(&hcrc, (uint32_t*) &status_msg, 12);
-
-  status_msg.crc = crc_tx;
-
-  if (tx_done_flag) {
-    HAL_UART_Transmit_DMA(&huart6, (uint8_t*) &status_msg, sizeof(status_msg));
-    tx_done_flag = 0;
-  }
-
-  HAL_UART_Receive_DMA(&huart6, (uint8_t*) &vel_msg, sizeof(vel_msg));
-}
+    if (tx_done_flag) {
+      HAL_UART_Transmit_DMA(&huart6, (uint8_t*) &status_msg, sizeof(status_msg));
+      tx_done_flag = 0;
+    }
 #endif
-
+  }
+}
 
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle) {
   tx_done_flag = 1;
