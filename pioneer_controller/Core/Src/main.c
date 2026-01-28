@@ -162,9 +162,6 @@ static uint32_t led_update_period = 200;
 
 static volatile int32_t ticks_left  = 0;
 static volatile int32_t ticks_right = 0;
-static volatile float previous_tx_millis;
-static volatile uint8_t tx_done_flag = 1;
-/* volatile MessageStatusCode otto_status = MessageStatusCode_Waiting4Config; */
 
 static volatile FMW_Message run_msg = {0};
 
@@ -821,7 +818,7 @@ void start(void) {
 FMW_Result message_handler(FMW_Message *msg) {
   // NOTE(lb): the `msg->header.crc != -1` checks are just because i haven't
   //           implemented CRC into the program that sends these messages.
-  //           i also don't know if the code to calculate CRC is correct.
+  //           i also don't know if the code to calculate CRC is correct (probably isn't).
   if (msg->header.crc != -1) {
     uint32_t crc_received = msg->header.crc;
     msg->header.crc = 0;
@@ -883,9 +880,27 @@ FMW_Result message_handler(FMW_Message *msg) {
     case FMW_MessageType_Status: { // TODO(lb): this should be `GetStatus` or something like that.
       int32_t current_ticks_left = ticks_left + fmw_encoder_count_get(&encoders.left);
       int32_t current_ticks_right = ticks_right + fmw_encoder_count_get(&encoders.right);
-      (void)current_ticks_left;
-      (void)current_ticks_right;
-      // TODO(lb): add the rest.
+      ticks_left = ticks_right = 0;
+
+      static float time_millis_previous = 0.f;
+      float time_millis_current = HAL_GetTick();
+      float time_millis_delta = time_millis_current - time_millis_previous;
+      time_millis_previous = time_millis_current;
+
+      // NOTE(lb): Does a status response need to be its own message or
+      //           is just logging fine? Is the workstation program interactive
+      //           (is there a user choosing which messages to send)
+      //           or is automated? And if it is automated wouldn't
+      //           it want to know if the board actually received its message?
+      //           If the build process wasn't so overcomplicated i could just add
+      //           a compilation flag and switch between both at comptime.
+
+      char buffer[128] = {0};
+      int32_t buffer_size = snprintf(buffer, ARRLENGTH(buffer), "time_millis_delta : %f\n"
+                                                                "ticks_left        : %ld\n"
+                                                                "ticks_right       : %ld\n",
+                                     time_millis_delta, current_ticks_left, current_ticks_right);
+      (void)HAL_UART_Transmit(UART_MESSANGER_HANDLE, (uint8_t*)buffer, buffer_size, HAL_MAX_DELAY);
     } break;
     case FMW_MessageType_Velocity: {
       fmw_odometry_setpoint_from_velocities(&odometry, msg->velocity.linear, msg->velocity.angular);
@@ -943,46 +958,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 
     // NOTE(lb): listen for the next message.
     HAL_UART_Receive_DMA(huart, (uint8_t*)&run_msg, sizeof run_msg);
-
-#if 0
-    /*
-     * Manage new transmission
-     */
-
-    int32_t left_ticks_tx = left_ticks + encoder_count_get(&encoders.left);
-    int32_t right_ticks_tx = right_ticks + encoder_count_get(&encoders.right);
-
-    status_msg.left_ticks = left_ticks_tx;
-    status_msg.right_ticks = right_ticks_tx;
-
-    left_ticks = 0;
-    right_ticks = 0;
-
-    float current_tx_millis = HAL_GetTick();
-    status_msg.delta_millis = current_tx_millis - previous_tx_millis;
-    previous_tx_millis = current_tx_millis;
-
-    status_msg.status = otto_status;
-
-    uint32_t crc_tx = HAL_CRC_Calculate(&hcrc, (uint32_t*) &status_msg, 12);
-
-    status_msg.crc = crc_tx;
-
-    if (tx_done_flag) {
-      HAL_UART_Transmit_DMA(&huart6, (uint8_t*) &status_msg, sizeof(status_msg));
-      tx_done_flag = 0;
-    }
-#endif
   }
-}
-
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle) {
-  tx_done_flag = 1;
-}
-
-uint8_t uart_err = 0;
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *UartHandle) {
-  uart_err += 1;
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
@@ -991,40 +967,55 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   switch (GPIO_Pin) {
   case aux_Pin: {
     if (time_now - time_aux_press > FMW_DEBOUNCE_DELAY) {
+      // NOTE(lb): is this useful?
       time_aux_press = time_now;
       HAL_GPIO_TogglePin(GPIOB, LD1_Pin);
       HAL_GPIO_TogglePin(GPIOB, LD2_Pin);
       HAL_GPIO_TogglePin(GPIOB, LD3_Pin);
       /* char msg[] = "AUX1 button pressed\r\n"; */
       /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+      // NOTE(lb): lol strlen
     }
   } break;
   case aux2_Pin: {
     if (time_now - time_aux2_press > FMW_DEBOUNCE_DELAY) {
+      // NOTE(lb): is this useful?
       time_aux2_press = time_now;
       /* char msg[] = "AUX2 button pressed\r\n"; */
       /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+      // NOTE(lb): lol strlen
     }
   } break;
   case motors_btn_Pin: {
     if (time_now - time_last_motors > FMW_DEBOUNCE_DELAY) {
+      // NOTE(lb): in both branches the buffer is turned off. When i should turn it on?
+      //           even in https://github.com/giuseppe-caliaro/pioneer3dx-control
+      //           Buzzer_Set is never called with true.
+
       time_last_motors = time_now;
       /* char msg[] = "Motors button pressed\r\n"; */
       /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
-      if(motors.left.active && motors.right.active) {
+      // NOTE(lb): lol strlen
+      if (motors.left.active && motors.right.active) {
         fmw_motor_disable(&motors.left);
         fmw_motor_disable(&motors.right);
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_RESET);
-        fmw_buzzer_set(&buzzer, 1, false);
+        fmw_buzzer_set(&buzzer, 1, false); // <--------------------------------
         /* char msg[] = "Motors OFF\r\n"; */
         /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+        // NOTE(lb): lol strlen
       } else {
+        // NOTE(lb): is it safe to assert here since the motors aren't running?
+        assert(!motors.left.active);
+        assert(!motors.right.active);
+
         fmw_motor_enable(&motors.left);
         fmw_motor_enable(&motors.right);
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_SET);
-        fmw_buzzer_set(&buzzer, 1, false);
+        fmw_buzzer_set(&buzzer, 1, false);  // <--------------------------------
         /* char msg[] = "Motors ON\r\n"; */
         /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
+        // NOTE(lb): lol strlen
       }
     }
   } break;

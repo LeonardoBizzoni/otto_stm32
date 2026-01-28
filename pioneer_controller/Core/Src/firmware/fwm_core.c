@@ -34,7 +34,7 @@ void fmw_result_log_uart(UART_HandleTypeDef *huart, FMW_Result result,
                          int32_t line) {
   char buff[512] = {0};
   int32_t length = fmw_result_format(buff, sizeof buff, filename, filename_length, line, result);
-  HAL_UART_Transmit(huart, (uint8_t*)buff, length, HAL_MAX_DELAY);
+  (void)HAL_UART_Transmit(huart, (uint8_t*)buff, length, HAL_MAX_DELAY);
 }
 
 // ============================================================
@@ -253,6 +253,7 @@ void fmw_led_update(FMW_Led *led) {
 
 // ============================================================
 // Buzzers
+// NOTE(lb): replace bool with uint8_t bitmask?
 FMW_Result fmw_buzzer_set(FMW_Buzzer buzzer[], int32_t count, bool on) {
   if (count < 1) { return FMW_Result_Error_InvalidArguments; }
   for (int32_t i = 0; i < count; ++i) {
