@@ -61,6 +61,11 @@ typedef struct {
   FMW_LedState state;
 } FMW_Led;
 
+typedef struct FMW_Buzzer {
+  TIM_HandleTypeDef *const timer;
+  uint32_t timer_channel;
+} FMW_Buzzer;
+
 typedef void fmw_interrupt(void *user_data);
 
 void fmw_motor_init(FMW_Motor motors[], int32_t count)                  __attribute__((nonnull));
@@ -82,6 +87,8 @@ void fmw_odometry_setpoint_from_velocities(FMW_Odometry *odometry,
 
 void fmw_led_init(FMW_Led *led)                                         __attribute__((nonnull));
 void fmw_led_update(FMW_Led *led)                                       __attribute__((nonnull));
+
+FMW_Result fmw_buzzer_set(FMW_Buzzer buzzer[], int32_t count, bool on)  __attribute__((nonnull));
 
 void fmw_result_log_uart(UART_HandleTypeDef *huart, FMW_Result result,
                          const char *filename, int16_t filename_length,

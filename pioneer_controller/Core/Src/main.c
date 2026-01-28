@@ -150,6 +150,11 @@ FMW_Led pled = {
   .state = FMW_LedState_Red,
 };
 
+FMW_Buzzer buzzer = {
+  .timer = &htim1,
+  .timer_channel = TIM_CHANNEL_2,
+};
+
 int32_t pid_max = 0;
 int32_t pid_min = 0;
 
@@ -904,16 +909,6 @@ FMW_Result message_handler(FMW_Message *msg) {
   return FMW_Result_Ok;
 }
 
-// TODO(lb): move to fmw. maybe create a FMW_Buzzer?
-void buzzer_set(bool on) {
-  if (on) {
-    __HAL_TIM_SET_COMPARE(&htim1, TIM_CHANNEL_2, htim1.Init.Period / 2);
-    HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-  } else {
-    HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
-  }
-}
-
 // TIMER 100Hz PID control
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   // NOTE(lb): metrics taken for transmission
@@ -1020,14 +1015,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
         fmw_motor_disable(&motors.left);
         fmw_motor_disable(&motors.right);
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_RESET);
-        buzzer_set(false);
+        fmw_buzzer_set(&buzzer, 1, false);
         /* char msg[] = "Motors OFF\r\n"; */
         /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
       } else {
         fmw_motor_enable(&motors.left);
         fmw_motor_enable(&motors.right);
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_SET);
-        buzzer_set(false);
+        fmw_buzzer_set(&buzzer, 1, false);
         /* char msg[] = "Motors ON\r\n"; */
         /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
       }

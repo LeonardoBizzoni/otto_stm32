@@ -1,30 +1,6 @@
 #ifndef FMW_MESSAGE_H
 #define FMW_MESSAGE_H
 
-// TODO(lb): fill with sensible values
-#define FMW_MIN_ACCEPTABLE_TICKS_PER_REVOLUTION 1
-#define FMW_MAX_ACCEPTABLE_TICKS_PER_REVOLUTION 10000
-
-// TODO(lb): fill with sensible values
-#define FMW_MIN_ACCEPTABLE_PID_PROPORTIONAL -1.f
-#define FMW_MAX_ACCEPTABLE_PID_PROPORTIONAL  1.f
-
-// TODO(lb): fill with sensible values
-#define FMW_MIN_ACCEPTABLE_PID_INTEGRAL -1.f
-#define FMW_MAX_ACCEPTABLE_PID_INTEGRAL  1.f
-
-// TODO(lb): fill with sensible values
-#define FMW_MIN_ACCEPTABLE_PID_DERIVATIVE -1.f
-#define FMW_MAX_ACCEPTABLE_PID_DERIVATIVE  1.f
-
-// TODO(lb): fill with sensible values
-#define FMW_MIN_ACCEPTABLE_LED_VOLTAGE 0.f
-#define FMW_MAX_ACCEPTABLE_LED_VOLTAGE 1.f
-
-// TODO(lb): fill with sensible values
-#define FMW_MIN_ACCEPTABLE_LED_UPDATE_PERIOD 1
-#define FMW_MAX_ACCEPTABLE_LED_UPDATE_PERIOD 10000
-
 typedef union {
   struct {
     float proportional;
@@ -75,6 +51,7 @@ enum {
 
 #define FMW_RESULT_VARIANTS(X)                                                  \
   X(FMW_Result_Ok)                                                              \
+  X(FMW_Result_Error_InvalidArguments)                                          \
   X(FMW_Result_Error_UART_Crc)                                                  \
   X(FMW_Result_Error_UART_NegativeTimeout)                                      \
   X(FMW_Result_Error_UART_ReceiveTimeoutElapsed)                                \
@@ -82,6 +59,7 @@ enum {
   X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution)                     \
   X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference)                     \
   X(FMW_Result_Error_Encoder_GetTick)                                           \
+  X(FMW_Result_Error_Buzzer_Timer)                                              \
   X(FMW_Result_Error_MessageHandler_InvalidState)                               \
   X(FMW_Result_Error_MessageHandler_Init_NonPositiveBaseline)                   \
   X(FMW_Result_Error_MessageHandler_Init_NonPositiveWheelCircumference)         \

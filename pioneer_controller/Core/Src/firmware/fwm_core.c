@@ -40,7 +40,7 @@ void fmw_result_log_uart(UART_HandleTypeDef *huart, FMW_Result result,
 // ============================================================
 // Motor controller
 void fmw_motor_init(FMW_Motor motors[], int32_t count) {
-  for (int32_t i = 0; i < count; ++ i) {
+  for (int32_t i = 0; i < count; ++i) {
     assert(motors[i].sleep_gpio_port);
     assert(motors[i].dir_gpio_port);
     assert(motors[i].pwm_timer);
@@ -249,4 +249,22 @@ void fmw_led_update(FMW_Led *led) {
   }
 
   __HAL_TIM_SET_COMPARE(led->timer, led->timer_channel, duty);
+}
+
+// ============================================================
+// Buzzers
+FMW_Result fmw_buzzer_set(FMW_Buzzer buzzer[], int32_t count, bool on) {
+  if (count < 1) { return FMW_Result_Error_InvalidArguments; }
+  for (int32_t i = 0; i < count; ++i) {
+    HAL_StatusTypeDef res;
+    if (on) {
+      __HAL_TIM_SET_COMPARE(buzzer[i].timer, buzzer[i].timer_channel,
+                            buzzer[i].timer->Init.Period / 2);
+      res = HAL_TIM_PWM_Start(buzzer[i].timer, buzzer[i].timer_channel);
+    } else {
+      res = HAL_TIM_PWM_Stop(buzzer[i].timer, buzzer[i].timer_channel);
+    }
+    if (res != HAL_OK) { return FMW_Result_Error_Buzzer_Timer; }
+  }
+  return FMW_Result_Ok;
 }
