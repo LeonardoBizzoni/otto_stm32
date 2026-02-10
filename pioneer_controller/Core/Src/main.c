@@ -32,7 +32,7 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-FMW_Result message_handler(FMW_Message *msg)
+FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc)
   __attribute__((warn_unused_result, nonnull));
 /* USER CODE END PTD */
 
@@ -781,13 +781,11 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void start(void) {
   for (FMW_Message msg = {0}; fmw_state == FMW_State_Init; ) {
-    FMW_Result res = fmw_message_receive_uart(UART_MESSANGER_HANDLE, 180 * 1000, &msg);
-    if (res != FMW_Result_Ok) {
-      FMW_RESULT_LOG_UART(UART_MESSANGER_HANDLE, res);
-    } else {
-      res = message_handler(&msg);
-      if (res != FMW_Result_Ok) { FMW_RESULT_LOG_UART(UART_MESSANGER_HANDLE, res); }
-    }
+    FMW_Result res = fmw_message_uart_receive(UART_MESSANGER_HANDLE, &msg, 180 * 1000);
+    FMW_Message response = {0};
+    response.header.type = FMW_MessageType_Response;
+    response.result = (res == FMW_Result_Ok) ? message_handler(&msg, &hcrc) : res;
+    fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
   }
 
   fmw_encoder_init(encoders.values, ENCODER_COUNT);
@@ -797,11 +795,11 @@ void start(void) {
   // Right and left motors have the same parameters
   pid_max = (int32_t)htim4.Instance->ARR;
   pid_min = -pid_max;
-  assert(pid_max > pid_min);
+  FMW_ASSERT(pid_max > pid_min);
 
   // Enables TIM6 interrupt (used for PID control)
   HAL_StatusTypeDef timer_status = HAL_TIM_Base_Start_IT(&htim6);
-  assert(timer_status == HAL_OK);
+  FMW_ASSERT(timer_status == HAL_OK);
 
   // Enables UART RX interrupt
   HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&run_msg, sizeof run_msg);
@@ -815,21 +813,21 @@ void start(void) {
   }
 }
 
-FMW_Result message_handler(FMW_Message *msg) {
+FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   // NOTE(lb): the `msg->header.crc != -1` checks are just because i haven't
   //           implemented CRC into the program that sends these messages.
   //           i also don't know if the code to calculate CRC is correct (probably isn't).
   if (msg->header.crc != -1) {
     uint32_t crc_received = msg->header.crc;
     msg->header.crc = 0;
-    uint32_t crc_computed = HAL_CRC_Calculate(&hcrc, (uint32_t*)msg, sizeof *msg);
+    uint32_t crc_computed = HAL_CRC_Calculate(hcrc, (uint32_t*)msg, sizeof *msg);
     if (!(crc_computed == crc_received)) { return FMW_Result_Error_UART_Crc; }
   }
 
   switch (fmw_state) {
   case FMW_State_Init: {
     switch (msg->header.type) {
-    case FMW_MessageType_Run: {
+    case FMW_MessageType_StateChange_Run: {
       fmw_state = FMW_State_Running;
     } break;
     case FMW_MessageType_Config_Robot: {
@@ -866,8 +864,8 @@ FMW_Result message_handler(FMW_Message *msg) {
       pled.voltage_hysteresis = msg->config_led.voltage_hysteresis;
       led_update_period = msg->config_led.update_period;
     } break;
-    case FMW_MessageType_Status: // NOTE(lb): allow status messages in init mode?
-    case FMW_MessageType_Velocity: {
+    case FMW_MessageType_Run_GetStatus: // NOTE(lb): allow status messages in init mode?
+    case FMW_MessageType_Run_SetVelocity: {
       return FMW_Result_Error_Command_NotAvailable;
     } break;
     default: {
@@ -877,7 +875,7 @@ FMW_Result message_handler(FMW_Message *msg) {
   } break;
   case FMW_State_Running: {
     switch (msg->header.type) {
-    case FMW_MessageType_Status: { // TODO(lb): this should be `GetStatus` or something like that.
+    case FMW_MessageType_Run_GetStatus: {
       int32_t current_ticks_left = ticks_left + fmw_encoder_count_get(&encoders.left);
       int32_t current_ticks_right = ticks_right + fmw_encoder_count_get(&encoders.right);
       ticks_left = ticks_right = 0;
@@ -887,28 +885,22 @@ FMW_Result message_handler(FMW_Message *msg) {
       float time_millis_delta = time_millis_current - time_millis_previous;
       time_millis_previous = time_millis_current;
 
-      // NOTE(lb): Does a status response need to be its own message or
-      //           is just logging fine? Is the workstation program interactive
-      //           (is there a user choosing which messages to send)
-      //           or is automated? And if it is automated wouldn't
-      //           it want to know if the board actually received its message?
-      //           If the build process wasn't so overcomplicated i could just add
-      //           a compilation flag and switch between both at comptime.
+      FMW_Message msg = {0};
+      msg.header.type = FMW_MessageType_Run_GetStatus_Response;
+      msg.status_response.delta_millis = time_millis_delta;
+      msg.status_response.ticks_left = current_ticks_left;
+      msg.status_response.ticks_right = current_ticks_right;
+      msg.header.crc = HAL_CRC_Calculate(hcrc, (uint32_t*)&msg, sizeof msg);
 
-      char buffer[128] = {0};
-      int32_t buffer_size = snprintf(buffer, ARRLENGTH(buffer), "time_millis_delta : %f\n"
-                                                                "ticks_left        : %ld\n"
-                                                                "ticks_right       : %ld\n",
-                                     time_millis_delta, current_ticks_left, current_ticks_right);
-      (void)HAL_UART_Transmit(UART_MESSANGER_HANDLE, (uint8_t*)buffer, buffer_size, HAL_MAX_DELAY);
+      (void)HAL_UART_Transmit(UART_MESSANGER_HANDLE, (uint8_t*)&msg, sizeof msg, HAL_MAX_DELAY);
     } break;
-    case FMW_MessageType_Velocity: {
+    case FMW_MessageType_Run_SetVelocity: {
       fmw_odometry_setpoint_from_velocities(&odometry, msg->velocity.linear, msg->velocity.angular);
       pid_left.setpoint  = odometry.setpoint_left;
       pid_right.setpoint = odometry.setpoint_right;
       pid_cross.setpoint = odometry.setpoint_left - odometry.setpoint_right;
     } break;
-    case FMW_MessageType_Run:
+    case FMW_MessageType_StateChange_Run:
     case FMW_MessageType_Config_Robot:
     case FMW_MessageType_Config_PID:
     case FMW_MessageType_Config_LED: {
@@ -933,12 +925,12 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   { // PID control
     fmw_encoder_update(&encoders.left);
     float velocity_left = fmw_encoder_get_linear_velocity(&encoders.left);
-    int dutycycle_left = fmw_pid_update(&pid_left, velocity_left);
+    int32_t dutycycle_left = fmw_pid_update(&pid_left, velocity_left);
 
     fmw_encoder_update(&encoders.right);
     float velocity_right = fmw_encoder_get_linear_velocity(&encoders.right);
-    int dutycycle_right = fmw_pid_update(&pid_right, velocity_right);
-    int dutycycle_cross = fmw_pid_update(&pid_cross, velocity_left - velocity_right);
+    int32_t dutycycle_right = fmw_pid_update(&pid_right, velocity_right);
+    int32_t dutycycle_cross = fmw_pid_update(&pid_cross, velocity_left - velocity_right);
 
     dutycycle_left  += dutycycle_cross;
     dutycycle_right -= dutycycle_cross;
@@ -950,11 +942,10 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
   if (huart == UART_MESSANGER_HANDLE) {
-    // NOTE(lb): i don't think another interrupt of this kind can occur
-    //           while i'm still handling the previous one so casting away
-    //           volatile should be fine.
-    FMW_Result res = message_handler((FMW_Message*)&run_msg);
-    if (res != FMW_Result_Ok) { FMW_RESULT_LOG_UART(huart, res); }
+    FMW_Message response = {0};
+    response.header.type = FMW_MessageType_Response;
+    response.result = message_handler((FMW_Message*)&run_msg, &hcrc);
+    fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
 
     // NOTE(lb): listen for the next message.
     HAL_UART_Receive_DMA(huart, (uint8_t*)&run_msg, sizeof run_msg);
@@ -1005,9 +996,9 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
         /* HAL_UART_Transmit(&huart3, (uint8_t*)msg, strlen(msg), HAL_MAX_DELAY); */
         // NOTE(lb): lol strlen
       } else {
-        // NOTE(lb): is it safe to assert here since the motors aren't running?
-        assert(!motors.left.active);
-        assert(!motors.right.active);
+        // NOTE(lb): is it safe to FMW_ASSERT here since the motors aren't running?
+        FMW_ASSERT(!motors.left.active);
+        FMW_ASSERT(!motors.right.active);
 
         fmw_motor_enable(&motors.left);
         fmw_motor_enable(&motors.right);
@@ -1021,8 +1012,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   } break;
   case fault1_Pin:
   case fault2_Pin: {
-    fmw_motor_brake(&motors.left);
-    fmw_motor_brake(&motors.right);
+    fmw_motor_brake(motors.values, ARRLENGTH(motors.values));
     // stop TIM6 interrupt (used for PID control)
     HAL_TIM_Base_Stop_IT(&htim6);
     /* otto_status = MessageStatusCode_Fault_HBridge; */
@@ -1039,7 +1029,6 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-
   /* USER CODE END Error_Handler_Debug */
 }
 #ifdef USE_FULL_ASSERT

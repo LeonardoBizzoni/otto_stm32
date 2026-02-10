@@ -12,21 +12,30 @@
 // TODO(lb): implement CRC
 
 static int serial_open(char *portname) {
-  int fd = open(portname, O_RDWR | O_NOCTTY | O_SYNC);
+  int fd = open(portname, O_RDWR | O_NOCTTY);
   assert(fd >= 0);
-  tcflush(fd, TCIOFLUSH);
 
   struct termios tty;
-  assert(!tcgetattr(fd, &tty));
-  cfsetospeed(&tty, B115200); // output baud rate
-  cfsetispeed(&tty, B115200); //  input baud rate
-  tty.c_cflag = (tty.c_cflag & (tcflag_t)~CSIZE) | CS8; // 8-bit chars
-  tty.c_iflag &= (tcflag_t)~IGNBRK;                     // disable break processing
-  tty.c_cc[VMIN]  = 0;                                  // read doesn't block
-  tty.c_cc[VTIME] = 20;                                 // 2.0 seconds read timeout
-  tty.c_cflag &= (tcflag_t)~(PARENB | PARODD);          // no parity
-  tty.c_cflag &= (tcflag_t)~CSTOPB;                     // 1 stop bit
-  assert(!tcsetattr(fd, TCSANOW, &tty));
+  tcgetattr(fd, &tty);
+
+  cfsetispeed(&tty, B115200);
+  cfsetospeed(&tty, B115200);
+
+  tty.c_cflag &= (tcflag_t)~PARENB;
+  tty.c_cflag &= (tcflag_t)~CSTOPB;
+  tty.c_cflag &= (tcflag_t)~CRTSCTS;
+  tty.c_cflag |= CS8 | CLOCAL | CREAD;
+
+  tty.c_lflag = 0;
+  tty.c_iflag = 0;
+  tty.c_oflag = 0;
+
+  tty.c_cc[VMIN]  = 1;
+  tty.c_cc[VTIME] = 0;
+
+  tcflush(fd, TCIFLUSH);
+  tcsetattr(fd, TCSANOW, &tty);
+
   return fd;
 }
 
@@ -34,7 +43,8 @@ int main(void) {
   int fd = serial_open("/dev/ttyACM0");
   assert(fd);
 
-#if 1
+  FMW_Message response = {0};
+
   FMW_Message msg_config_robot = {
     .header = {
       .type = FMW_MessageType_Config_Robot,
@@ -42,13 +52,19 @@ int main(void) {
     },
     .config_robot = {
       .baseline = 2.3f,
-      .left_wheel_circumference = 4.f,
-      .left_ticks_per_revolution = 250,
-      .right_wheel_circumference = 3.2f,
-      .right_ticks_per_revolution = 350,
+      .wheel_circumference_left = 4.f,
+      .wheel_circumference_right = 3.2f,
+      .ticks_per_revolution_left = 250,
+      .ticks_per_revolution_right = 350,
     },
   };
   write(fd, &msg_config_robot, sizeof(FMW_Message));
+  for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+    ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+    if (n >= 0) { bytes_read += (uint32_t)n; }
+  }
+  assert(response.header.type == FMW_MessageType_Response);
+  assert(response.result == FMW_Result_Ok);
 
   FMW_Message msg_config_pid = {
     .header = {
@@ -74,61 +90,26 @@ int main(void) {
     },
   };
   write(fd, &msg_config_pid, sizeof(FMW_Message));
+  for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+    ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+    if (n >= 0) { bytes_read += (uint32_t)n; }
+  }
+  assert(response.header.type == FMW_MessageType_Response);
+  assert(response.result == FMW_Result_Ok);
 
   FMW_Message msg_run = {
     .header = {
-      .type = FMW_MessageType_Run,
+      .type = FMW_MessageType_StateChange_Run,
       .crc = (uint32_t)-1,
     },
   };
   write(fd, &msg_run, sizeof(FMW_Message));
-#else
-  FMW_Message msgs[3] = {
-    {
-      .header = {
-        .type = FMW_MessageType_Config_Robot,
-        .crc = (uint32_t)-1,
-      },
-      .config_robot = {
-        .baseline = 2.3f,
-        .left_wheel_circumference = 4.f,
-        .left_ticks_per_revolution = 250,
-        .right_wheel_circumference = 3.2f,
-        .right_ticks_per_revolution = 350,
-      },
-    },
-    {
-      .header = {
-        .type = FMW_MessageType_Config_PID,
-        .crc = (uint32_t)-1,
-      },
-      .config_pid = {
-        .left = {
-          .proportional = 0.2f,
-          .integral = 0.2f,
-          .derivative = 0.2f,
-        },
-        .right = {
-          .proportional = 0.3f,
-          .integral = 0.3f,
-          .derivative = 0.3f,
-        },
-        .cross = {
-          .proportional = 0.4f,
-          .integral = 0.4f,
-          .derivative = 0.4f,
-        },
-      },
-    },
-    {
-      .header = {
-        .type = FMW_MessageType_Run,
-        .crc = (uint32_t)-1,
-      },
-    },
-  };
-  write(fd, &msgs, 3 * sizeof(FMW_Message));
-#endif
+  for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+    ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+    if (n >= 0) { bytes_read += (uint32_t)n; }
+  }
+  assert(response.header.type == FMW_MessageType_Response);
+  assert(response.result == FMW_Result_Ok);
 
   close(fd);
 }

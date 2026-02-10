@@ -10,25 +10,11 @@ typedef union {
   float values[3];
 } FMW_PidConstants;
 
-typedef uint16_t FMW_MessageStatusCode;
-enum {
-  FMW_MessageStatusCode_None,
-
-  FMW_MessageStatusCode_Waiting4Config = 0,
-  FMW_MessageStatusCode_Running        = 1,
-  FMW_MessageStatusCode_Error_Config   = 2,
-  FMW_MessageStatusCode_Error_Velocity = 3,
-  FMW_MessageStatusCode_Fault_HBridge  = 4,
-
-  FMW_MessageStatusCode_COUNT,
-};
-
 typedef uint8_t FMW_State;
 enum {
   FMW_State_None,
 
   FMW_State_Init,
-  FMW_State_Error,
   FMW_State_Running,
 
   FMW_State_COUNT,
@@ -39,12 +25,19 @@ enum {
   FMW_MessageType_None,
 
   FMW_MessageType_Error,
-  FMW_MessageType_Run,
+  FMW_MessageType_Response,
+
+  FMW_MessageType_StateChange_Init,
+  FMW_MessageType_StateChange_Run,
+
   FMW_MessageType_Config_Robot,
   FMW_MessageType_Config_PID,
   FMW_MessageType_Config_LED,
-  FMW_MessageType_Status,
-  FMW_MessageType_Velocity,
+
+  FMW_MessageType_Run_GetStatus,
+  FMW_MessageType_Run_GetStatus_Response,
+  FMW_MessageType_Run_SetVelocity,
+  FMW_MessageType_Run_SetVelocity_Response,
 
   FMW_MessageType_COUNT,
 };
@@ -85,10 +78,8 @@ typedef struct {
 
   union {
     struct {
-      const char *filename;
       int32_t line;
-      int32_t filename_size;
-      FMW_Result reason;
+      int32_t file_size;
     } error;
 
     struct {
@@ -110,12 +101,13 @@ typedef struct {
       uint32_t update_period;
     } config_led;
 
+    FMW_Result result;
     struct {
-      FMW_MessageStatusCode status_code;
+      FMW_Result result;
       uint16_t delta_millis;
-      int32_t left_ticks;
-      int32_t right_ticks;
-    } status;
+      int32_t ticks_left;
+      int32_t ticks_right;
+    } status_response;
     struct {
       float linear;
       float angular;
