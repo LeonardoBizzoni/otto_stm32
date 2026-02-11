@@ -1,6 +1,14 @@
 #ifndef FMW_CORE_H
 #define FMW_CORE_H
 
+typedef uint8_t FMW_Mode;
+enum {
+  FMW_Mode_None,
+  FMW_Mode_Init,
+  FMW_Mode_Run,
+  FMW_Mode_COUNT,
+};
+
 typedef struct FMW_Encoder {
   TIM_HandleTypeDef *const timer;
   uint32_t previous_millis;
@@ -74,8 +82,8 @@ typedef struct FMW_Hook {
 void fmw_motor_init(FMW_Motor motors[], int32_t count)          __attribute__((nonnull));
 void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle)  __attribute__((nonnull));
 void fmw_motor_brake(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
-void fmw_motor_enable(FMW_Motor * motor)                        __attribute__((nonnull));
-void fmw_motor_disable(FMW_Motor * motor)                       __attribute__((nonnull));
+void fmw_motor_enable(FMW_Motor motors[], int32_t count)        __attribute__((nonnull));
+void fmw_motor_disable(FMW_Motor motors[], int32_t count)       __attribute__((nonnull));
 
 void fmw_encoder_init(FMW_Encoder encoders[], int32_t count)            __attribute__((nonnull));
 void fmw_encoder_update(FMW_Encoder *encoder)                           __attribute__((nonnull));

@@ -10,16 +10,6 @@ typedef union {
   float values[3];
 } FMW_PidConstants;
 
-typedef uint8_t FMW_State;
-enum {
-  FMW_State_None,
-
-  FMW_State_Init,
-  FMW_State_Running,
-
-  FMW_State_COUNT,
-};
-
 typedef uint8_t FMW_MessageType;
 enum {
   FMW_MessageType_None,

@@ -114,16 +114,34 @@ void fmw_motor_brake(FMW_Motor motors[], int32_t count) {
   }
 }
 
-void fmw_motor_enable(FMW_Motor *motor) {
-  HAL_StatusTypeDef res = HAL_TIM_PWM_Start(motor->pwm_timer, motor->pwm_channel);
-  FMW_ASSERT(res == HAL_OK);
-  motor->active = true;
+void fmw_motor_enable(FMW_Motor motors[], int32_t count) {
+  FMW_ASSERT(count > 0);
+  for (int32_t i = 0; i < count; ++i) {
+    FMW_ASSERT(motors[i].pwm_timer != NULL);
+    FMW_ASSERT(motors[i].pwm_channel == TIM_CHANNEL_1 || motors[i].pwm_channel == TIM_CHANNEL_2 ||
+               motors[i].pwm_channel == TIM_CHANNEL_3 || motors[i].pwm_channel == TIM_CHANNEL_4 ||
+               motors[i].pwm_channel == TIM_CHANNEL_5 || motors[i].pwm_channel == TIM_CHANNEL_6 ||
+               motors[i].pwm_channel == TIM_CHANNEL_ALL);
+    FMW_ASSERT(!motors[i].active);
+    HAL_StatusTypeDef res = HAL_TIM_PWM_Start(motors[i].pwm_timer, motors[i].pwm_channel);
+    FMW_ASSERT(res == HAL_OK);
+    motors[i].active = true;
+  }
 }
 
-void fmw_motor_disable(FMW_Motor *motor) {
-  HAL_StatusTypeDef res = HAL_TIM_PWM_Stop(motor->pwm_timer, motor->pwm_channel);
-  FMW_ASSERT(res == HAL_OK, .callback = fmw_hook_assert_fail);
-  motor->active = false;
+void fmw_motor_disable(FMW_Motor motors[], int32_t count) {
+  FMW_ASSERT(count > 0, .callback = fmw_hook_assert_fail);
+  for (int32_t i = 0; i < count; ++i) {
+    FMW_ASSERT(motors[i].pwm_timer != NULL, .callback = fmw_hook_assert_fail);
+    FMW_ASSERT(motors[i].pwm_channel == TIM_CHANNEL_1 || motors[i].pwm_channel == TIM_CHANNEL_2 ||
+               motors[i].pwm_channel == TIM_CHANNEL_3 || motors[i].pwm_channel == TIM_CHANNEL_4 ||
+               motors[i].pwm_channel == TIM_CHANNEL_5 || motors[i].pwm_channel == TIM_CHANNEL_6 ||
+               motors[i].pwm_channel == TIM_CHANNEL_ALL, .callback = fmw_hook_assert_fail);
+    FMW_ASSERT(motors[i].active);
+    HAL_StatusTypeDef res = HAL_TIM_PWM_Stop(motors[i].pwm_timer, motors[i].pwm_channel);
+    FMW_ASSERT(res == HAL_OK, .callback = fmw_hook_assert_fail);
+    motors[i].active = false;
+  }
 }
 
 // ============================================================
