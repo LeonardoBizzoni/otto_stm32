@@ -32,6 +32,33 @@ void fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc, F
   FMW_ASSERT(res == HAL_OK, .callback = fmw_hook_assert_fail);
 }
 
+FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart) {
+  FMW_ASSERT(huart->ErrorCode != HAL_UART_ERROR_NONE, .callback = fmw_hook_assert_fail);
+  FMW_Message res = {0};
+  res.header.type = FMW_MessageType_Response;
+  switch (huart->ErrorCode) {
+  case HAL_UART_ERROR_PE: {
+    res.response = FMW_Result_Error_UART_Parity;
+  } break;
+  case HAL_UART_ERROR_FE: {
+    res.response = FMW_Result_Error_UART_Frame;
+  } break;
+  case HAL_UART_ERROR_NE: {
+    res.response = FMW_Result_Error_UART_Noise;
+  } break;
+  case HAL_UART_ERROR_ORE: {
+    res.response = FMW_Result_Error_UART_Overrun;
+  } break;
+  case HAL_UART_ERROR_RTO: {
+    res.response = FMW_Result_Error_UART_ReceiveTimeoutElapsed;
+  } break;
+  default: { // NOTE(lb): unreachable
+    FMW_ASSERT(false, .callback = fmw_hook_assert_fail);
+  } break;
+  }
+  return res;
+}
+
 // ============================================================
 // Motor controller
 void fmw_motor_init(FMW_Motor motors[], int32_t count) {

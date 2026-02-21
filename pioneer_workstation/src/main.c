@@ -39,6 +39,35 @@ static int serial_open(char *portname) {
   return fd;
 }
 
+static void pprint_message(const FMW_Message *msg) {
+  static const char *message_types[] = {
+#define X(Variant) #Variant,
+    FMW_MESSAGE_TYPE_VARIANTS(X)
+#undef X
+  };
+
+  static const char *result_types[] = {
+#define X(Variant) #Variant,
+    FMW_RESULT_VARIANTS(X)
+#undef X
+  };
+
+  printf("FMW_Message {"
+         "\n  header.type = %s"
+         "\n  header.crc  = %u",
+         message_types[msg->header.type],
+         msg->header.crc);
+  switch (msg->header.type) {
+  case FMW_MessageType_Response: {
+    printf("\n  response: %s", result_types[msg->response]);
+  } break;
+  default: {
+    assert(0 && "unreachable");
+  } break;
+  }
+  printf("\n}\n");
+}
+
 int main(void) {
   int fd = serial_open("/dev/ttyACM0");
   assert(fd);
@@ -64,7 +93,8 @@ int main(void) {
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
   assert(response.header.type == FMW_MessageType_Response);
-  assert(response.result == FMW_Result_Ok);
+  pprint_message(&response);
+  assert(response.response == FMW_Result_Ok);
 
   FMW_Message msg_config_pid = {
     .header = {
@@ -95,7 +125,8 @@ int main(void) {
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
   assert(response.header.type == FMW_MessageType_Response);
-  assert(response.result == FMW_Result_Ok);
+  pprint_message(&response);
+  assert(response.response == FMW_Result_Ok);
 
   FMW_Message msg_run = {
     .header = {
@@ -109,7 +140,8 @@ int main(void) {
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
   assert(response.header.type == FMW_MessageType_Response);
-  assert(response.result == FMW_Result_Ok);
+  pprint_message(&response);
+  assert(response.response == FMW_Result_Ok);
 
   close(fd);
 }

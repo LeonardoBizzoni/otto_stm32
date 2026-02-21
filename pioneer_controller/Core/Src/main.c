@@ -815,11 +815,18 @@ void start(void) {
   HAL_StatusTypeDef timer_status = HAL_TIM_Base_Start_IT(&htim6);
   FMW_ASSERT(timer_status == HAL_OK);
 
-  for (uint32_t time_last_led_update = 0;;) {
-    uint32_t time_now = HAL_GetTick();
-    if (time_now - time_last_led_update >= led_update_period) {
-      time_last_led_update = time_now;
-      fmw_led_update(&pled);
+  for (;;) {
+    switch (current_mode) {
+    case FMW_Mode_Init: {
+    } break;
+    case FMW_Mode_Run: {
+      static uint32_t time_last_led_update = 0;
+      uint32_t time_now = HAL_GetTick();
+      if (time_now - time_last_led_update >= led_update_period) {
+        time_last_led_update = time_now;
+        fmw_led_update(&pled);
+      }
+    } break;
     }
   }
 }
@@ -929,6 +936,8 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
 
 // TIMER 100Hz PID control
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
+  if (htim != &htim6) { return; }
+
   // NOTE(lb): metrics taken for transmission
   ticks_left  += fmw_encoder_count_get(&encoders.left);
   ticks_right += fmw_encoder_count_get(&encoders.right);
@@ -952,18 +961,22 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if (huart == UART_MESSANGER_HANDLE) {
-    FMW_Message response = {0};
-    response.header.type = FMW_MessageType_Response;
-    response.result = message_handler((FMW_Message*)&uart_message_buffer, &hcrc);
-    fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
-    // NOTE(lb): listen for the next message.
-    HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
-  }
+  if (huart != UART_MESSANGER_HANDLE) { return; }
+  FMW_Message response = {0};
+  response.header.type = FMW_MessageType_Response;
+  response.response = message_handler((FMW_Message*)&uart_message_buffer, &hcrc);
+  fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
+  // NOTE(lb): listen for the next message.
+  HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
-  FMW_ASSERT(false);
+  if (huart != UART_MESSANGER_HANDLE) { return; }
+  FMW_Message response = fmw_message_from_uart_error(huart);
+  fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
+
+  HAL_UART_AbortReceive(huart);
+  HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {

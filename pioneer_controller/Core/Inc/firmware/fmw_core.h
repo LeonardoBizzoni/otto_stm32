@@ -103,6 +103,8 @@ void fmw_buzzer_set(FMW_Buzzer buzzer[], int32_t count, bool on) __attribute__((
 FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg, int32_t wait_ms)                       __attribute__((warn_unused_result, nonnull));
 void fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc, FMW_Message *msg, int32_t wait_ms)       __attribute__((nonnull));
 
+FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart);
+
 #define FMW_LED_UPDATE_PERIOD 200
 #define FMW_DEBOUNCE_DELAY 200
 
