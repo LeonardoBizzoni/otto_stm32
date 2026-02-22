@@ -19,9 +19,7 @@ typedef union {
   X(FMW_MessageType_Config_PID)                 \
   X(FMW_MessageType_Config_LED)                 \
   X(FMW_MessageType_Run_GetStatus)              \
-  X(FMW_MessageType_Run_GetStatus_Response)     \
   X(FMW_MessageType_Run_SetVelocity)            \
-  X(FMW_MessageType_Run_SetVelocity_Response)   \
   X(FMW_MessageType_COUNT)
 
 typedef uint8_t FMW_MessageType;
@@ -89,17 +87,17 @@ typedef struct {
       uint32_t update_period;
     } config_led;
 
-    FMW_Result response;
-    struct {
-      FMW_Result result;
-      uint16_t delta_millis;
-      int32_t ticks_left;
-      int32_t ticks_right;
-    } status_response;
     struct {
       float linear;
       float angular;
-    } velocity;
+    } run_set_velocity;
+
+    struct {
+      int32_t ticks_left;
+      int32_t ticks_right;
+      uint16_t delta_millis;
+      FMW_Result result;
+    } response;
   };
 } FMW_Message;
 #pragma pack(pop)

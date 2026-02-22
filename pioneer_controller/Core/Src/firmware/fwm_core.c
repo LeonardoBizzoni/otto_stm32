@@ -38,19 +38,19 @@ FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart) {
   res.header.type = FMW_MessageType_Response;
   switch (huart->ErrorCode) {
   case HAL_UART_ERROR_PE: {
-    res.response = FMW_Result_Error_UART_Parity;
+    res.response.result = FMW_Result_Error_UART_Parity;
   } break;
   case HAL_UART_ERROR_FE: {
-    res.response = FMW_Result_Error_UART_Frame;
+    res.response.result = FMW_Result_Error_UART_Frame;
   } break;
   case HAL_UART_ERROR_NE: {
-    res.response = FMW_Result_Error_UART_Noise;
+    res.response.result = FMW_Result_Error_UART_Noise;
   } break;
   case HAL_UART_ERROR_ORE: {
-    res.response = FMW_Result_Error_UART_Overrun;
+    res.response.result = FMW_Result_Error_UART_Overrun;
   } break;
   case HAL_UART_ERROR_RTO: {
-    res.response = FMW_Result_Error_UART_ReceiveTimeoutElapsed;
+    res.response.result = FMW_Result_Error_UART_ReceiveTimeoutElapsed;
   } break;
   default: { // NOTE(lb): unreachable
     FMW_ASSERT(false, .callback = fmw_hook_assert_fail);

@@ -59,7 +59,10 @@ static void pprint_message(const FMW_Message *msg) {
          msg->header.crc);
   switch (msg->header.type) {
   case FMW_MessageType_Response: {
-    printf("\n  response: %s", result_types[msg->response]);
+    printf("\n  response:     %s", result_types[msg->response.result]);
+    printf("\n  delta_millis: %d", msg->response.delta_millis);
+    printf("\n  ticks_left:   %d", msg->response.ticks_left);
+    printf("\n  ticks_right:  %d", msg->response.ticks_right);
   } break;
   default: {
     assert(0 && "unreachable");
@@ -93,8 +96,9 @@ int main(void) {
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
   assert(response.header.type == FMW_MessageType_Response);
+  printf("\tconfig:robot\n");
   pprint_message(&response);
-  assert(response.response == FMW_Result_Ok);
+  assert(response.response.result == FMW_Result_Ok);
 
   FMW_Message msg_config_pid = {
     .header = {
@@ -125,8 +129,9 @@ int main(void) {
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
   assert(response.header.type == FMW_MessageType_Response);
+  printf("\tconfig:pid\n");
   pprint_message(&response);
-  assert(response.response == FMW_Result_Ok);
+  assert(response.response.result == FMW_Result_Ok);
 
   FMW_Message msg_run = {
     .header = {
@@ -140,8 +145,60 @@ int main(void) {
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
   assert(response.header.type == FMW_MessageType_Response);
+  printf("\trun\n");
   pprint_message(&response);
-  assert(response.response == FMW_Result_Ok);
+  assert(response.response.result == FMW_Result_Ok);
+
+  FMW_Message msg_get_status = {
+    .header = {
+      .type = FMW_MessageType_Run_GetStatus,
+      .crc = (uint32_t)-1,
+    },
+  };
+  write(fd, &msg_get_status, sizeof(FMW_Message));
+  for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+    ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+    if (n >= 0) { bytes_read += (uint32_t)n; }
+  }
+  assert(response.header.type == FMW_MessageType_Response);
+  printf("\trun:get_status\n");
+  pprint_message(&response);
+
+  for (int i = 0; i < 100; ++i) {
+    FMW_Message msg_set_speed = {
+      .header = {
+        .type = FMW_MessageType_Run_SetVelocity,
+        .crc = (uint32_t)-1,
+      },
+      .run_set_velocity = {
+        .linear = 10.f,
+        .angular = 2.5f,
+      },
+    };
+    write(fd, &msg_set_speed, sizeof(FMW_Message));
+    for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+      ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+      if (n >= 0) { bytes_read += (uint32_t)n; }
+    }
+    assert(response.header.type == FMW_MessageType_Response);
+    printf("\trun:set_speed\n");
+    pprint_message(&response);
+  }
+
+  FMW_Message msg_init = {
+    .header = {
+      .type = FMW_MessageType_StateChange_Init,
+      .crc = (uint32_t)-1,
+    },
+  };
+  write(fd, &msg_init, sizeof(FMW_Message));
+  for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+    ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+    if (n >= 0) { bytes_read += (uint32_t)n; }
+  }
+  assert(response.header.type == FMW_MessageType_Response);
+  printf("\tinit\n");
+  pprint_message(&response);
 
   close(fd);
 }
