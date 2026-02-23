@@ -164,7 +164,7 @@ static volatile int32_t ticks_left  = 0;
 static volatile int32_t ticks_right = 0;
 static volatile FMW_Message uart_message_buffer = {0};
 static volatile uint32_t time_last_motors = 0;
-static volatile FMW_Mode current_mode = FMW_Mode_Init;
+static volatile FMW_Mode current_mode = FMW_Mode_Config;
 
 /* USER CODE END PV */
 
@@ -800,7 +800,7 @@ static void MX_GPIO_Init(void)
 void start(void) {
   // Enables UART RX interrupt
   HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
-  for (; current_mode == FMW_Mode_Init; );
+  for (; current_mode == FMW_Mode_Config; );
 
   fmw_encoder_init(encoders.values, ENCODER_COUNT);
   fmw_motor_init(motors.values, MOTOR_COUNT);
@@ -817,7 +817,7 @@ void start(void) {
 
   for (;;) {
     switch (current_mode) {
-    case FMW_Mode_Init: {
+    case FMW_Mode_Config: {
     } break;
     case FMW_Mode_Run: {
       static uint32_t time_last_led_update = 0;
@@ -844,24 +844,24 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
 
   FMW_Result result = FMW_Result_Ok;
   switch (current_mode) {
-  case FMW_Mode_Init: {
+  case FMW_Mode_Config: {
     switch (msg->header.type) {
     case FMW_MessageType_StateChange_Run: {
       current_mode = FMW_Mode_Run;
     } break;
     case FMW_MessageType_Config_Robot: {
       if (!(msg->config_robot.baseline > 0.f)) {
-        result = FMW_Result_Error_MessageHandler_Init_NonPositiveBaseline;
+        result = FMW_Result_Error_MessageHandler_Config_NonPositiveBaseline;
         goto msg_contains_error;
       }
       if (!(msg->config_robot.wheel_circumference_left > 0.f &&
             msg->config_robot.wheel_circumference_right > 0.f)) {
-        result = FMW_Result_Error_MessageHandler_Init_NonPositiveWheelCircumference;
+        result = FMW_Result_Error_MessageHandler_Config_NonPositiveWheelCircumference;
         goto msg_contains_error;
       }
       if (!(msg->config_robot.ticks_per_revolution_left > 0 &&
             msg->config_robot.ticks_per_revolution_right > 0)) {
-        result = FMW_Result_Error_MessageHandler_Init_NonPositiveTicksPerRevolution;
+        result = FMW_Result_Error_MessageHandler_Config_NonPositiveTicksPerRevolution;
         goto msg_contains_error;
       }
 
@@ -878,7 +878,7 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
     } break;
     case FMW_MessageType_Config_LED: {
       if (!(msg->config_led.update_period > 0)) {
-        result = FMW_Result_Error_MessageHandler_Init_NonPositiveLEDUpdatePeriod;
+        result = FMW_Result_Error_MessageHandler_Config_NonPositiveLEDUpdatePeriod;
         goto msg_contains_error;
       }
 
@@ -887,7 +887,7 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       pled.voltage_hysteresis = msg->config_led.voltage_hysteresis;
       led_update_period = msg->config_led.update_period;
     } break;
-    case FMW_MessageType_Run_GetStatus: // NOTE(lb): allow status messages in init mode?
+    case FMW_MessageType_Run_GetStatus: // NOTE(lb): allow status messages in config mode?
     case FMW_MessageType_Run_SetVelocity: {
       result = FMW_Result_Error_Command_NotAvailable;
       goto msg_contains_error;
@@ -926,11 +926,11 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       (void)HAL_UART_Transmit(UART_MESSANGER_HANDLE, (uint8_t*)&msg, sizeof msg, HAL_MAX_DELAY);
       return FMW_Result_Ok;
     } break;
-    case FMW_MessageType_StateChange_Init: {
+    case FMW_MessageType_StateChange_Config: {
       fmw_encoder_count_reset(&encoders.left);
       fmw_encoder_count_reset(&encoders.right);
       fmw_motor_brake(motors.values, ARRLENGTH(motors.values));
-      current_mode = FMW_Mode_Init;
+      current_mode = FMW_Mode_Config;
     } break;
     case FMW_MessageType_StateChange_Run:
     case FMW_MessageType_Config_Robot:

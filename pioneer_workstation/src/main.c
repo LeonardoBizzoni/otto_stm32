@@ -187,7 +187,7 @@ int main(void) {
 
   FMW_Message msg_init = {
     .header = {
-      .type = FMW_MessageType_StateChange_Init,
+      .type = FMW_MessageType_StateChange_Config,
       .crc = (uint32_t)-1,
     },
   };

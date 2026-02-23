@@ -4,7 +4,7 @@
 typedef uint8_t FMW_Mode;
 enum {
   FMW_Mode_None,
-  FMW_Mode_Init,
+  FMW_Mode_Config,
   FMW_Mode_Run,
   FMW_Mode_COUNT,
 };

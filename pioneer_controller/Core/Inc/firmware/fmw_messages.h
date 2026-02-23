@@ -13,7 +13,7 @@ typedef union {
 #define FMW_MESSAGE_TYPE_VARIANTS(X)            \
   X(FMW_MessageType_None)                       \
   X(FMW_MessageType_Response)                   \
-  X(FMW_MessageType_StateChange_Init)           \
+  X(FMW_MessageType_StateChange_Config)           \
   X(FMW_MessageType_StateChange_Run)            \
   X(FMW_MessageType_Config_Robot)               \
   X(FMW_MessageType_Config_PID)                 \
@@ -29,28 +29,28 @@ enum {
 #undef X
 };
 
-#define FMW_RESULT_VARIANTS(X)                                          \
-  X(FMW_Result_Ok)                                                      \
-  X(FMW_Result_Error_InvalidArguments)                                  \
-  X(FMW_Result_Error_UART_Crc)                                          \
-  X(FMW_Result_Error_UART_NegativeTimeout)                              \
-  X(FMW_Result_Error_UART_ReceiveTimeoutElapsed)                        \
-  X(FMW_Result_Error_UART_Parity)                                       \
-  X(FMW_Result_Error_UART_Frame)                                        \
-  X(FMW_Result_Error_UART_Noise)                                        \
-  X(FMW_Result_Error_UART_Overrun)                                      \
-  X(FMW_Result_Error_Encoder_InvalidTimer)                              \
-  X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution)             \
-  X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference)             \
-  X(FMW_Result_Error_Encoder_GetTick)                                   \
-  X(FMW_Result_Error_Buzzer_Timer)                                      \
-  X(FMW_Result_Error_MessageHandler_InvalidState)                       \
-  X(FMW_Result_Error_MessageHandler_Init_NonPositiveBaseline)           \
-  X(FMW_Result_Error_MessageHandler_Init_NonPositiveWheelCircumference) \
-  X(FMW_Result_Error_MessageHandler_Init_NonPositiveTicksPerRevolution) \
-  X(FMW_Result_Error_MessageHandler_Init_NonPositiveLEDUpdatePeriod)    \
-  X(FMW_Result_Error_Command_NotRecognized)                             \
-  X(FMW_Result_Error_Command_NotAvailable)                              \
+#define FMW_RESULT_VARIANTS(X)                                                  \
+  X(FMW_Result_Ok)                                                              \
+  X(FMW_Result_Error_InvalidArguments)                                          \
+  X(FMW_Result_Error_UART_Crc)                                                  \
+  X(FMW_Result_Error_UART_NegativeTimeout)                                      \
+  X(FMW_Result_Error_UART_ReceiveTimeoutElapsed)                                \
+  X(FMW_Result_Error_UART_Parity)                                               \
+  X(FMW_Result_Error_UART_Frame)                                                \
+  X(FMW_Result_Error_UART_Noise)                                                \
+  X(FMW_Result_Error_UART_Overrun)                                              \
+  X(FMW_Result_Error_Encoder_InvalidTimer)                                      \
+  X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution)                     \
+  X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference)                     \
+  X(FMW_Result_Error_Encoder_GetTick)                                           \
+  X(FMW_Result_Error_Buzzer_Timer)                                              \
+  X(FMW_Result_Error_MessageHandler_InvalidState)                               \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveBaseline)                 \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveWheelCircumference)       \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveTicksPerRevolution)       \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveLEDUpdatePeriod)          \
+  X(FMW_Result_Error_Command_NotRecognized)                                     \
+  X(FMW_Result_Error_Command_NotAvailable)                                      \
   X(FMW_Result_COUNT)
 
 typedef uint8_t FMW_Result;
