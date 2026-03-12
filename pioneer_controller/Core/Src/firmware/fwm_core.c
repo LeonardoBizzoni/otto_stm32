@@ -10,7 +10,7 @@ static struct {
 
 static void fmw_hook_assert_fail(void *_) {
   if (fmw_state.motors != NULL) {
-    fmw_motor_brake(fmw_state.motors, fmw_state.motors_count);
+    fmw_motors_stop(fmw_state.motors, fmw_state.motors_count);
   }
 }
 
@@ -26,10 +26,10 @@ FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg,
   return FMW_Result_Ok;
 }
 
-void fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc, FMW_Message *msg, int32_t wait_ms) {
+HAL_StatusTypeDef fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc, FMW_Message *msg, int32_t wait_ms) {
   msg->header.crc = HAL_CRC_Calculate(hcrc, (uint32_t*)msg, sizeof *msg);
   HAL_StatusTypeDef res = HAL_UART_Transmit(huart, (uint8_t*)msg, sizeof *msg, wait_ms);
-  FMW_ASSERT(res == HAL_OK, .callback = fmw_hook_assert_fail);
+  return res;
 }
 
 FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart) {
@@ -61,15 +61,15 @@ FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart) {
 
 // ============================================================
 // Motor controller
-void fmw_motor_init(FMW_Motor motors[], int32_t count) {
+void fmw_motors_init(FMW_Motor motors[], int32_t count) {
   FMW_ASSERT(count > 0);
   fmw_state.motors = motors;
   fmw_state.motors_count = count;
 
   for (int32_t i = 0; i < count; ++i) {
-    FMW_ASSERT(motors[i].sleep_gpio_port);
-    FMW_ASSERT(motors[i].dir_gpio_port);
-    FMW_ASSERT(motors[i].pwm_timer);
+    FMW_ASSERT(motors[i].sleep_gpio_port != NULL);
+    FMW_ASSERT(motors[i].dir_gpio_port != NULL);
+    FMW_ASSERT(motors[i].pwm_timer != NULL);
     FMW_ASSERT(motors[i].pwm_channel == TIM_CHANNEL_1 || motors[i].pwm_channel == TIM_CHANNEL_2 ||
                motors[i].pwm_channel == TIM_CHANNEL_3 || motors[i].pwm_channel == TIM_CHANNEL_4 ||
                motors[i].pwm_channel == TIM_CHANNEL_5 || motors[i].pwm_channel == TIM_CHANNEL_6 ||
@@ -97,7 +97,15 @@ void fmw_motor_init(FMW_Motor motors[], int32_t count) {
     motors[i].max_dutycycle = motors[i].pwm_timer->Instance->ARR;
     motors[i].active = true;
   }
-  fmw_motor_brake(motors, count);
+  fmw_motors_stop(motors, count);
+}
+
+void fmw_motors_deinit(FMW_Motor motors[], int32_t count) {
+  for (int32_t i = 0; i < count; ++i) {
+    HAL_StatusTypeDef status = HAL_TIM_PWM_Stop(motors[i].pwm_timer, motors[i].pwm_channel);
+    FMW_ASSERT(status == HAL_OK);
+    motors[i].active = false;
+  }
 }
 
 void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle) {
@@ -118,7 +126,7 @@ void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle) {
   HAL_GPIO_WritePin(motor->sleep_gpio_port, motor->sleep_pin, GPIO_PIN_SET);
 }
 
-void fmw_motor_brake(FMW_Motor motors[], int32_t count) {
+void fmw_motors_stop(FMW_Motor motors[], int32_t count) {
   FMW_ASSERT(count > 0);
   for (int32_t i = 0; i < count; ++i) {
     FMW_ASSERT(motors[i].sleep_gpio_port != NULL);
@@ -136,12 +144,12 @@ void fmw_motor_brake(FMW_Motor motors[], int32_t count) {
                motors[i].pwm_channel == TIM_CHANNEL_5 || motors[i].pwm_channel == TIM_CHANNEL_6 ||
                motors[i].pwm_channel == TIM_CHANNEL_ALL);
 
-    HAL_GPIO_WritePin(motors[i].sleep_gpio_port, motors[i].sleep_pin, FMW_MotorDirection_Backward);
+    HAL_GPIO_WritePin(motors[i].sleep_gpio_port, motors[i].sleep_pin, GPIO_PIN_RESET);
     __HAL_TIM_SET_COMPARE(motors[i].pwm_timer, motors[i].pwm_channel, 0);
   }
 }
 
-void fmw_motor_enable(FMW_Motor motors[], int32_t count) {
+void fmw_motors_enable(FMW_Motor motors[], int32_t count) {
   FMW_ASSERT(count > 0);
   for (int32_t i = 0; i < count; ++i) {
     FMW_ASSERT(motors[i].pwm_timer != NULL);
@@ -156,7 +164,7 @@ void fmw_motor_enable(FMW_Motor motors[], int32_t count) {
   }
 }
 
-void fmw_motor_disable(FMW_Motor motors[], int32_t count) {
+void fmw_motors_disable(FMW_Motor motors[], int32_t count) {
   FMW_ASSERT(count > 0, .callback = fmw_hook_assert_fail);
   for (int32_t i = 0; i < count; ++i) {
     FMW_ASSERT(motors[i].pwm_timer != NULL, .callback = fmw_hook_assert_fail);
@@ -173,7 +181,7 @@ void fmw_motor_disable(FMW_Motor motors[], int32_t count) {
 
 // ============================================================
 // Encoder
-void fmw_encoder_init(FMW_Encoder encoders[], int32_t count) {
+void fmw_encoders_init(FMW_Encoder encoders[], int32_t count) {
   for (int32_t i = 0; i < count; ++i) {
     FMW_ASSERT(encoders[i].timer != NULL);
     FMW_ASSERT(encoders[i].ticks_per_revolution > 0);
@@ -187,6 +195,14 @@ void fmw_encoder_init(FMW_Encoder encoders[], int32_t count) {
     FMW_ASSERT(status == HAL_OK);
     fmw_encoder_count_reset(&encoders[i]);
     encoders[i].current_millis = HAL_GetTick();
+  }
+}
+
+void fmw_encoders_deinit(FMW_Encoder encoders[], int32_t count) {
+  for (int32_t i = 0; i < count; ++i) {
+    FMW_ASSERT(encoders[i].timer != NULL);
+    HAL_StatusTypeDef status = HAL_TIM_Encoder_Stop(encoders[i].timer, TIM_CHANNEL_ALL);
+    FMW_ASSERT(status == HAL_OK);
   }
 }
 
@@ -211,12 +227,12 @@ float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder) {
 }
 
 void fmw_encoder_count_reset(FMW_Encoder *encoder) {
-  FMW_ASSERT(encoder->timer, .callback = fmw_hook_assert_fail);
+  FMW_ASSERT(encoder->timer != NULL, .callback = fmw_hook_assert_fail);
   __HAL_TIM_SET_COUNTER(encoder->timer, (encoder->timer->Init.Period / 2));
 }
 
 int32_t fmw_encoder_count_get(const FMW_Encoder *encoder) {
-  FMW_ASSERT(encoder->timer, .callback = fmw_hook_assert_fail);
+  FMW_ASSERT(encoder->timer != NULL, .callback = fmw_hook_assert_fail);
   return (int32_t)__HAL_TIM_GET_COUNTER(encoder->timer) - (encoder->timer->Init.Period / 2);
 }
 
@@ -250,8 +266,8 @@ int32_t fmw_pid_update(FMW_PidController *pid, float velocity) {
 // ============================================================
 // LEDs
 void fmw_led_init(FMW_Led *led) {
-  FMW_ASSERT(led->timer);
-  FMW_ASSERT(led->adc);
+  FMW_ASSERT(led->timer != NULL);
+  FMW_ASSERT(led->adc != NULL);
   FMW_ASSERT(led->timer_channel == TIM_CHANNEL_1 || led->timer_channel == TIM_CHANNEL_2 ||
              led->timer_channel == TIM_CHANNEL_3 || led->timer_channel == TIM_CHANNEL_4 ||
              led->timer_channel == TIM_CHANNEL_5 || led->timer_channel == TIM_CHANNEL_6 ||
@@ -266,8 +282,14 @@ void fmw_led_init(FMW_Led *led) {
   __HAL_TIM_SET_COMPARE(led->timer, led->timer_channel, 0);
 }
 
+void fmw_led_deinit(FMW_Led *led) {
+  HAL_StatusTypeDef status = HAL_TIM_PWM_Stop(led->timer, led->timer_channel);
+  FMW_ASSERT(status == HAL_OK);
+}
+
 void fmw_led_update(FMW_Led *led) {
-  FMW_ASSERT(led->timer && led->adc, .callback = fmw_hook_assert_fail);
+  FMW_ASSERT(led->timer != NULL, .callback = fmw_hook_assert_fail);
+  FMW_ASSERT(led->adc != NULL, .callback = fmw_hook_assert_fail);
   FMW_ASSERT(led->timer_channel == TIM_CHANNEL_1 || led->timer_channel == TIM_CHANNEL_2 ||
              led->timer_channel == TIM_CHANNEL_3 || led->timer_channel == TIM_CHANNEL_4 ||
              led->timer_channel == TIM_CHANNEL_5 || led->timer_channel == TIM_CHANNEL_6 ||
@@ -332,7 +354,7 @@ void fmw_led_update(FMW_Led *led) {
 // ============================================================
 // Buzzers
 // NOTE(lb): replace bool with uint8_t bitmask?
-void fmw_buzzer_set(FMW_Buzzer buzzer[], int32_t count, bool on) {
+void fmw_buzzers_set(FMW_Buzzer buzzer[], int32_t count, bool on) {
   FMW_ASSERT(count >= 0, .callback = fmw_hook_assert_fail);
   for (int32_t i = 0; i < count; ++i) {
     HAL_StatusTypeDef res;

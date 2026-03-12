@@ -33,7 +33,8 @@ static int serial_open(char *portname) {
   tty.c_cc[VMIN]  = 1;
   tty.c_cc[VTIME] = 0;
 
-  tcflush(fd, TCIFLUSH);
+  sleep(2); // NOTE(lb): required to make flush work, for some reason
+  tcflush(fd, TCIOFLUSH);
   tcsetattr(fd, TCSANOW, &tty);
 
   return fd;
@@ -77,6 +78,116 @@ int main(void) {
 
   FMW_Message response = {0};
 
+#if 0
+  FMW_Message msgs[] = {
+    {
+      .header = {
+        .type = FMW_MessageType_Config_Robot,
+        .crc = (uint32_t)-1,
+      },
+      .config_robot = {
+        .baseline = 2.3f,
+        .wheel_circumference_left = 4.f,
+        .wheel_circumference_right = 3.2f,
+        .ticks_per_revolution_left = 250,
+        .ticks_per_revolution_right = 350,
+      },
+    },
+    {
+      .header = {
+        .type = FMW_MessageType_Config_PID,
+        .crc = (uint32_t)-1,
+      },
+      .config_pid = {
+        .left = {
+          .proportional = 0.2f,
+          .integral = 0.2f,
+          .derivative = 0.2f,
+        },
+        .right = {
+          .proportional = 0.3f,
+          .integral = 0.3f,
+          .derivative = 0.3f,
+        },
+        .cross = {
+          .proportional = 0.4f,
+          .integral = 0.4f,
+          .derivative = 0.4f,
+        },
+      },
+    },
+    {
+      .header = {
+        .type = FMW_MessageType_Config_Robot,
+        .crc = (uint32_t)-1,
+      },
+      .config_robot = {
+        .baseline = 2.3f,
+        .wheel_circumference_left = 4.f,
+        .wheel_circumference_right = 3.2f,
+        .ticks_per_revolution_left = 250,
+        .ticks_per_revolution_right = 350,
+      },
+    },
+  };
+  write(fd, &msgs, sizeof(msgs));
+  for (int i = 0; i < 2; ++i) {
+    for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+      ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+      if (n >= 0) { bytes_read += (uint32_t)n; }
+    }
+    assert(response.header.type == FMW_MessageType_Response);
+    pprint_message(&response);
+  }
+#elif 0
+  FMW_Message msg_config_robot = {
+    .header = {
+      .type = FMW_MessageType_Config_Robot,
+      .crc = (uint32_t)-1,
+    },
+    .config_robot = {
+      .baseline = 2.3f,
+      .wheel_circumference_left = 4.f,
+      .wheel_circumference_right = 3.2f,
+      .ticks_per_revolution_left = 250,
+      .ticks_per_revolution_right = 350,
+    },
+  };
+  FMW_Message msg_config_pid = {
+    .header = {
+      .type = FMW_MessageType_Config_PID,
+      .crc = (uint32_t)-1,
+    },
+    .config_pid = {
+      .left = {
+        .proportional = 0.2f,
+        .integral = 0.2f,
+        .derivative = 0.2f,
+      },
+      .right = {
+        .proportional = 0.3f,
+        .integral = 0.3f,
+        .derivative = 0.3f,
+      },
+      .cross = {
+        .proportional = 0.4f,
+        .integral = 0.4f,
+        .derivative = 0.4f,
+      },
+    },
+  };
+
+  write(fd, &msg_config_robot, sizeof(FMW_Message));
+  write(fd, &msg_config_pid, sizeof(FMW_Message));
+  for (int i = 0; i < 2; ++i) {
+    for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+      ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+      if (n >= 0) { bytes_read += (uint32_t)n; }
+    }
+    assert(response.header.type == FMW_MessageType_Response);
+    pprint_message(&response);
+  }
+#else
   FMW_Message msg_config_robot = {
     .header = {
       .type = FMW_MessageType_Config_Robot,
@@ -95,9 +206,9 @@ int main(void) {
     ssize_t n = read(fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
-  assert(response.header.type == FMW_MessageType_Response);
   printf("\tconfig:robot\n");
   pprint_message(&response);
+  assert(response.header.type == FMW_MessageType_Response);
   assert(response.response.result == FMW_Result_Ok);
 
   FMW_Message msg_config_pid = {
@@ -135,7 +246,7 @@ int main(void) {
 
   FMW_Message msg_run = {
     .header = {
-      .type = FMW_MessageType_StateChange_Run,
+      .type = FMW_MessageType_ModeChange_Run,
       .crc = (uint32_t)-1,
     },
   };
@@ -187,7 +298,7 @@ int main(void) {
 
   FMW_Message msg_init = {
     .header = {
-      .type = FMW_MessageType_StateChange_Config,
+      .type = FMW_MessageType_ModeChange_Config,
       .crc = (uint32_t)-1,
     },
   };
@@ -199,6 +310,7 @@ int main(void) {
   assert(response.header.type == FMW_MessageType_Response);
   printf("\tinit\n");
   pprint_message(&response);
+#endif
 
   close(fd);
 }

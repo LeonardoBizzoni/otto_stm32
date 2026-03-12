@@ -79,13 +79,15 @@ typedef struct FMW_Hook {
   void *args;
 } FMW_Hook;
 
-void fmw_motor_init(FMW_Motor motors[], int32_t count)          __attribute__((nonnull));
+void fmw_motors_init(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
+void fmw_motors_deinit(FMW_Motor motors[], int32_t count)       __attribute__((nonnull));
+void fmw_motors_stop(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
+void fmw_motors_enable(FMW_Motor motors[], int32_t count)       __attribute__((nonnull));
+void fmw_motors_disable(FMW_Motor motors[], int32_t count)      __attribute__((nonnull));
 void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle)  __attribute__((nonnull));
-void fmw_motor_brake(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
-void fmw_motor_enable(FMW_Motor motors[], int32_t count)        __attribute__((nonnull));
-void fmw_motor_disable(FMW_Motor motors[], int32_t count)       __attribute__((nonnull));
 
-void fmw_encoder_init(FMW_Encoder encoders[], int32_t count)            __attribute__((nonnull));
+void fmw_encoders_init(FMW_Encoder encoders[], int32_t count)           __attribute__((nonnull));
+void fmw_encoders_deinit(FMW_Encoder encoders[], int32_t count)         __attribute__((nonnull));
 void fmw_encoder_update(FMW_Encoder *encoder)                           __attribute__((nonnull));
 float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder)       __attribute__((warn_unused_result, nonnull));
 void fmw_encoder_count_reset(FMW_Encoder *encoder)                      __attribute__((nonnull));
@@ -96,12 +98,14 @@ int32_t fmw_pid_update(FMW_PidController *pid, float velocity) __attribute__((wa
 void fmw_odometry_setpoint_from_velocities(FMW_Odometry *odometry, float linear, float angular) __attribute__((nonnull));
 
 void fmw_led_init(FMW_Led *led)         __attribute__((nonnull));
+void fmw_led_deinit(FMW_Led *led)       __attribute__((nonnull));
 void fmw_led_update(FMW_Led *led)       __attribute__((nonnull));
 
-void fmw_buzzer_set(FMW_Buzzer buzzer[], int32_t count, bool on) __attribute__((nonnull));
+void fmw_buzzers_set(FMW_Buzzer buzzer[], int32_t count, bool on) __attribute__((nonnull));
 
-FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg, int32_t wait_ms)                       __attribute__((warn_unused_result, nonnull));
-void fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc, FMW_Message *msg, int32_t wait_ms)       __attribute__((nonnull));
+FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg, int32_t wait_ms) __attribute__((warn_unused_result, nonnull));
+HAL_StatusTypeDef fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc,
+                                        FMW_Message *msg, int32_t wait_ms)                        __attribute__((nonnull, warn_unused_result));
 
 FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart);
 

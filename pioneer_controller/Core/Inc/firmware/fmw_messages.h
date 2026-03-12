@@ -13,8 +13,8 @@ typedef union {
 #define FMW_MESSAGE_TYPE_VARIANTS(X)            \
   X(FMW_MessageType_None)                       \
   X(FMW_MessageType_Response)                   \
-  X(FMW_MessageType_StateChange_Config)           \
-  X(FMW_MessageType_StateChange_Run)            \
+  X(FMW_MessageType_ModeChange_Config)          \
+  X(FMW_MessageType_ModeChange_Run)             \
   X(FMW_MessageType_Config_Robot)               \
   X(FMW_MessageType_Config_PID)                 \
   X(FMW_MessageType_Config_LED)                 \
@@ -32,6 +32,7 @@ enum {
 #define FMW_RESULT_VARIANTS(X)                                                  \
   X(FMW_Result_Ok)                                                              \
   X(FMW_Result_Error_InvalidArguments)                                          \
+  X(FMW_Result_Error_FaultPinTriggered)                                         \
   X(FMW_Result_Error_UART_Crc)                                                  \
   X(FMW_Result_Error_UART_NegativeTimeout)                                      \
   X(FMW_Result_Error_UART_ReceiveTimeoutElapsed)                                \
@@ -61,7 +62,7 @@ enum {
 };
 
 #pragma pack(push, 1)
-typedef struct {
+typedef struct FMW_Message {
   struct {
     FMW_MessageType type;
     uint32_t crc;
@@ -101,5 +102,10 @@ typedef struct {
   };
 } FMW_Message;
 #pragma pack(pop)
+
+static_assert(sizeof(uint8_t)   == 1);
+static_assert(sizeof(uint16_t)  == 2);
+static_assert(sizeof(uint32_t)  == 4);
+static_assert(sizeof(float)     == 4);
 
 #endif /* INC_COMMUNICATION_OTTO_MESSAGES_H_ */

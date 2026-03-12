@@ -38,8 +38,6 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc)
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define MOTOR_COUNT 2
-#define ENCODER_COUNT 2
 #define UART_MESSANGER_HANDLE (&huart3)
 /* USER CODE END PD */
 
@@ -65,7 +63,7 @@ DMA_HandleTypeDef hdma_usart3_rx;
 
 // TODO(lb): fill with sensible default
 static union {
-  FMW_Encoder values[ENCODER_COUNT];
+  FMW_Encoder values[2];
   struct {
     FMW_Encoder right;
     FMW_Encoder left;
@@ -116,7 +114,7 @@ FMW_PidController pid_cross = {
 };
 
 static union {
-  FMW_Motor values[MOTOR_COUNT];
+  FMW_Motor values[2];
   struct {
     FMW_Motor right;
     FMW_Motor left;
@@ -800,20 +798,6 @@ static void MX_GPIO_Init(void)
 void start(void) {
   // Enables UART RX interrupt
   HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
-  for (; current_mode == FMW_Mode_Config; );
-
-  fmw_encoder_init(encoders.values, ENCODER_COUNT);
-  fmw_motor_init(motors.values, MOTOR_COUNT);
-  fmw_led_init(&pled);
-
-  // Right and left motors have the same parameters
-  pid_max = (int32_t)htim4.Instance->ARR;
-  pid_min = -pid_max;
-  FMW_ASSERT(pid_max > pid_min);
-
-  // Enables TIM6 interrupt (used for PID control)
-  HAL_StatusTypeDef timer_status = HAL_TIM_Base_Start_IT(&htim6);
-  FMW_ASSERT(timer_status == HAL_OK);
 
   for (;;) {
     switch (current_mode) {
@@ -846,7 +830,20 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   switch (current_mode) {
   case FMW_Mode_Config: {
     switch (msg->header.type) {
-    case FMW_MessageType_StateChange_Run: {
+    case FMW_MessageType_ModeChange_Run: {
+      fmw_encoders_init(encoders.values, ARRLENGTH(encoders.values));
+      fmw_motors_init(motors.values, ARRLENGTH(motors.values));
+      fmw_led_init(&pled);
+
+      // Right and left motors have the same parameters
+      pid_max = (int32_t)htim4.Instance->ARR;
+      pid_min = -pid_max;
+      FMW_ASSERT(pid_max > pid_min);
+
+      // Enables TIM6 interrupt (used for PID control)
+      HAL_StatusTypeDef timer_status = HAL_TIM_Base_Start_IT(&htim6);
+      FMW_ASSERT(timer_status == HAL_OK);
+
       current_mode = FMW_Mode_Run;
     } break;
     case FMW_MessageType_Config_Robot: {
@@ -887,7 +884,7 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       pled.voltage_hysteresis = msg->config_led.voltage_hysteresis;
       led_update_period = msg->config_led.update_period;
     } break;
-    case FMW_MessageType_Run_GetStatus: // NOTE(lb): allow status messages in config mode?
+    case FMW_MessageType_Run_GetStatus:
     case FMW_MessageType_Run_SetVelocity: {
       result = FMW_Result_Error_Command_NotAvailable;
       goto msg_contains_error;
@@ -926,13 +923,21 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       (void)HAL_UART_Transmit(UART_MESSANGER_HANDLE, (uint8_t*)&msg, sizeof msg, HAL_MAX_DELAY);
       return FMW_Result_Ok;
     } break;
-    case FMW_MessageType_StateChange_Config: {
+    case FMW_MessageType_ModeChange_Config: {
+      fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
       fmw_encoder_count_reset(&encoders.left);
       fmw_encoder_count_reset(&encoders.right);
-      fmw_motor_brake(motors.values, ARRLENGTH(motors.values));
+
+      fmw_encoders_deinit(encoders.values, ARRLENGTH(encoders.values));
+      fmw_motors_deinit(motors.values, ARRLENGTH(motors.values));
+      fmw_led_deinit(&pled);
+
+      HAL_StatusTypeDef timer_status = HAL_TIM_Base_Stop_IT(&htim6);
+      FMW_ASSERT(timer_status == HAL_OK);
+
       current_mode = FMW_Mode_Config;
     } break;
-    case FMW_MessageType_StateChange_Run:
+    case FMW_MessageType_ModeChange_Run:
     case FMW_MessageType_Config_Robot:
     case FMW_MessageType_Config_PID:
     case FMW_MessageType_Config_LED: {
@@ -951,7 +956,8 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   FMW_Message response = {0};
   response.header.type = FMW_MessageType_Response;
   response.response.result = result;
-  fmw_message_uart_send(UART_MESSANGER_HANDLE, hcrc, &response, 1);
+  HAL_StatusTypeDef send_res = fmw_message_uart_send(UART_MESSANGER_HANDLE, hcrc, &response, 1);
+  FMW_ASSERT(send_res == HAL_OK);
   return result;
 }
 
@@ -991,16 +997,18 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
   if (huart != UART_MESSANGER_HANDLE) { return; }
 
-  if (huart->RxState == HAL_UART_STATE_BUSY_RX) {
-    FMW_Message response = fmw_message_from_uart_error(huart);
-    fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
-    HAL_UART_AbortReceive(huart);
-    HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
-  } else {
-    fmw_motor_brake(motors.values, ARRLENGTH(motors.values));
-    FMW_ASSERT(huart->gState == HAL_UART_STATE_BUSY_TX);
-    FMW_ASSERT(false);
+  fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
+  FMW_Message response = fmw_message_from_uart_error(huart);
+
+  retry:;
+  HAL_StatusTypeDef res = fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
+  if (res != HAL_OK) { // NOTE(lb): send help
+    fmw_buzzers_set(&buzzer, 1, true);
+    goto retry;
   }
+
+  HAL_UART_AbortReceive(huart);
+  HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
@@ -1011,24 +1019,33 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     if (time_now - time_last_motors > FMW_DEBOUNCE_DELAY) {
       time_last_motors = time_now;
       if (motors.left.active && motors.right.active) {
-        fmw_motor_disable(motors.values, ARRLENGTH(motors.values));
+        fmw_motors_disable(motors.values, ARRLENGTH(motors.values));
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_RESET);
-        fmw_buzzer_set(&buzzer, 1, false);
+        fmw_buzzers_set(&buzzer, 1, false);
       } else {
         FMW_ASSERT(!motors.left.active);
         FMW_ASSERT(!motors.right.active);
-        fmw_motor_enable(motors.values, ARRLENGTH(motors.values));
+        fmw_motors_enable(motors.values, ARRLENGTH(motors.values));
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_SET);
-        fmw_buzzer_set(&buzzer, 1, false);
+        fmw_buzzers_set(&buzzer, 1, false);
       }
     }
   } break;
   case fault1_Pin:
   case fault2_Pin: {
-    fmw_motor_brake(motors.values, ARRLENGTH(motors.values));
-    // stop TIM6 interrupt (used for PID control)
+    fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
+    FMW_Message response = {0};
+    response.header.type = FMW_MessageType_Response;
+    response.response.result = FMW_Result_Error_FaultPinTriggered;
+
+    retry:;
+    HAL_StatusTypeDef res = fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
+    if (res != HAL_OK) { // NOTE(lb): send help
+      fmw_buzzers_set(&buzzer, 1, true);
+      goto retry;
+    }
+
     HAL_TIM_Base_Stop_IT(&htim6);
-    /* otto_status = MessageStatusCode_Fault_HBridge; */
   } break;
   }
 }
