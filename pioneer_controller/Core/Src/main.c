@@ -38,7 +38,7 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc)
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define UART_MESSANGER_HANDLE (&huart3)
+#define UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL (&huart3)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -797,7 +797,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 void start(void) {
   // Enables UART RX interrupt
-  HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
+  HAL_UART_Receive_DMA(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
 
   for (;;) {
     switch (current_mode) {
@@ -904,6 +904,9 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       pid_cross.setpoint = odometry.setpoint_left - odometry.setpoint_right;
     } // fallthrough
     case FMW_MessageType_Run_GetStatus: {
+      // NOTE(lb): SetVelocity continues here as well because the previous case doesn't end with a `break`.
+      //           order matters.
+
       int32_t current_ticks_left = ticks_left + fmw_encoder_count_get(&encoders.left);
       int32_t current_ticks_right = ticks_right + fmw_encoder_count_get(&encoders.right);
       ticks_left = ticks_right = 0;
@@ -920,8 +923,10 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       msg.response.ticks_left = current_ticks_left;
       msg.response.ticks_right = current_ticks_right;
       msg.header.crc = HAL_CRC_Calculate(hcrc, (uint32_t*)&msg, sizeof msg);
-      (void)HAL_UART_Transmit(UART_MESSANGER_HANDLE, (uint8_t*)&msg, sizeof msg, HAL_MAX_DELAY);
+      (void)HAL_UART_Transmit(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&msg, sizeof msg, HAL_MAX_DELAY);
       return FMW_Result_Ok;
+      // NOTE(lb): GetStatus&SetVelocity have to respond with the same special message format.
+      //           so they don't continue down to `msg_contains_error`.
     } break;
     case FMW_MessageType_ModeChange_Config: {
       fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
@@ -952,11 +957,13 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   } break;
   }
 
+  // NOTE(lb): control flow naturally converges here.
+  //           the symbol is used to jump here directly in case of error.
  msg_contains_error:;
   FMW_Message response = {0};
   response.header.type = FMW_MessageType_Response;
   response.response.result = result;
-  HAL_StatusTypeDef send_res = fmw_message_uart_send(UART_MESSANGER_HANDLE, hcrc, &response, 1);
+  HAL_StatusTypeDef send_res = fmw_message_uart_send(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, hcrc, &response, 1);
   FMW_ASSERT(send_res == HAL_OK);
   return result;
 }
@@ -988,27 +995,35 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if (huart != UART_MESSANGER_HANDLE) { return; }
+  if (huart != UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL) { return; }
   (void)message_handler((FMW_Message*)&uart_message_buffer, &hcrc);
-  // NOTE(lb): listen for the next message.
-  HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
+
+  // NOTE(lb): listen for the next message "recursively".
+  HAL_UART_Receive_DMA(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
-  if (huart != UART_MESSANGER_HANDLE) { return; }
+  if (huart != UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL) { return; }
 
+  // NOTE(lb): i don't know how to determine if the error that cause the jump here
+  //           was during a receive or a send of a message over UART, so i'm just
+  //           going to stop the motors and abort the receive just in case.
   fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
-  FMW_Message response = fmw_message_from_uart_error(huart);
+  HAL_UART_AbortReceive(huart);
 
+  FMW_Message response = fmw_message_from_uart_error(huart);
   retry:;
-  HAL_StatusTypeDef res = fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
-  if (res != HAL_OK) { // NOTE(lb): send help
+  HAL_StatusTypeDef res = fmw_message_uart_send(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, &hcrc, &response, HAL_MAX_DELAY);
+  if (res != HAL_OK) {
+    // NOTE(lb): keep trying to send the error message even on failure until it succeeds
+    //           while also being extra annoying.
     fmw_buzzers_set(&buzzer, 1, true);
     goto retry;
   }
+  fmw_buzzers_set(&buzzer, 1, false);
 
-  HAL_UART_AbortReceive(huart);
-  HAL_UART_Receive_DMA(UART_MESSANGER_HANDLE, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
+  // NOTE(lb): go back to normal message receive after the error has been notified
+  HAL_UART_Receive_DMA(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
@@ -1039,7 +1054,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     response.response.result = FMW_Result_Error_FaultPinTriggered;
 
     retry:;
-    HAL_StatusTypeDef res = fmw_message_uart_send(UART_MESSANGER_HANDLE, &hcrc, &response, HAL_MAX_DELAY);
+    HAL_StatusTypeDef res = fmw_message_uart_send(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, &hcrc, &response, HAL_MAX_DELAY);
     if (res != HAL_OK) { // NOTE(lb): send help
       fmw_buzzers_set(&buzzer, 1, true);
       goto retry;

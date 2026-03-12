@@ -3,10 +3,10 @@
 
 typedef uint8_t FMW_Mode;
 enum {
-  FMW_Mode_None,
-  FMW_Mode_Config,
-  FMW_Mode_Run,
-  FMW_Mode_COUNT,
+  FMW_Mode_None = 0,
+  FMW_Mode_Config = 1,
+  FMW_Mode_Run = 2,
+  FMW_Mode_COUNT = 3,
 };
 
 typedef struct FMW_Encoder {
@@ -119,6 +119,12 @@ FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart);
 #define FMW_METERS_FROM_TICKS(Ticks, WheelCircumference, TicksPerRevolution) \
   ((Ticks * WheelCircumference) / TicksPerRevolution)
 
+// NOTE(lb): The variadic arguments are the fields of FMW_Hook, so you can just type
+//           `.callback = your_function_pointer, .args = your_pointer_to_args`.
+//           Calling this macro with the condition argument is GCC extension.
+//           I don't use `assert` because i never figured out how to make it trigger
+//           a debug breakpoint inside the STM32 ide debugger (and also because having a
+//           on-failure callback is handy).
 #define FMW_ASSERT(Cond, ...)           \
   do {                                  \
     FMW_Hook hook = { __VA_ARGS__ };    \

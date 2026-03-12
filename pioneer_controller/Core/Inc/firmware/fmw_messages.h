@@ -10,54 +10,66 @@ typedef union {
   float values[3];
 } FMW_PidConstants;
 
-#define FMW_MESSAGE_TYPE_VARIANTS(X)            \
-  X(FMW_MessageType_None)                       \
-  X(FMW_MessageType_Response)                   \
-  X(FMW_MessageType_ModeChange_Config)          \
-  X(FMW_MessageType_ModeChange_Run)             \
-  X(FMW_MessageType_Config_Robot)               \
-  X(FMW_MessageType_Config_PID)                 \
-  X(FMW_MessageType_Config_LED)                 \
-  X(FMW_MessageType_Run_GetStatus)              \
-  X(FMW_MessageType_Run_SetVelocity)            \
-  X(FMW_MessageType_COUNT)
+// NOTE(lb): The expansion of this macro relies on another macro called "X" (hence the name X-macro).
+//           X isn't define yet but, for it to work with this macro expansion, it must be a function-like macro
+//           with exactly 2 arguemnts: 1) the enumation variant name. 2) the corresponding numerical id.
+#define FMW_MESSAGE_TYPE_VARIANTS()             \
+  X(FMW_MessageType_None, 0)                    \
+  X(FMW_MessageType_Response, 1)                \
+  X(FMW_MessageType_ModeChange_Config, 2)       \
+  X(FMW_MessageType_ModeChange_Run, 3)          \
+  X(FMW_MessageType_Config_Robot, 4)            \
+  X(FMW_MessageType_Config_PID, 5)              \
+  X(FMW_MessageType_Config_LED, 6)              \
+  X(FMW_MessageType_Run_GetStatus, 7)           \
+  X(FMW_MessageType_Run_SetVelocity, 8)         \
+  X(FMW_MessageType_COUNT, 9)
 
+// NOTE(lb): Here i want to take all of the variants that are generated from the macro
+//           expension of FMW_MESSAGE_TYPE_VARIANTS and use them to populate the enum definition.
+//           For it to be a valid enum definition you need to take every `X(VariantName, Id)`
+//           and turn them into `VariantName = Id,`.
+//           It's important to undefine `X` after use to avoid redefinition and, more importantly,
+//           to use it in another X-macro expansion by accident.
+//           This seems pointless but when paired with `#VariantName` you can automatically
+//           turn all of the symbolic variant names into strings and now printing the variant
+//           can be done via an array lookup `[VariantName] = #VariantName` instead of a runtime check.
 typedef uint8_t FMW_MessageType;
 enum {
-#define X(Variant) Variant,
-  FMW_MESSAGE_TYPE_VARIANTS(X)
+#define X(Variant, Id) Variant = Id,
+  FMW_MESSAGE_TYPE_VARIANTS()
 #undef X
 };
 
-#define FMW_RESULT_VARIANTS(X)                                                  \
-  X(FMW_Result_Ok)                                                              \
-  X(FMW_Result_Error_InvalidArguments)                                          \
-  X(FMW_Result_Error_FaultPinTriggered)                                         \
-  X(FMW_Result_Error_UART_Crc)                                                  \
-  X(FMW_Result_Error_UART_NegativeTimeout)                                      \
-  X(FMW_Result_Error_UART_ReceiveTimeoutElapsed)                                \
-  X(FMW_Result_Error_UART_Parity)                                               \
-  X(FMW_Result_Error_UART_Frame)                                                \
-  X(FMW_Result_Error_UART_Noise)                                                \
-  X(FMW_Result_Error_UART_Overrun)                                              \
-  X(FMW_Result_Error_Encoder_InvalidTimer)                                      \
-  X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution)                     \
-  X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference)                     \
-  X(FMW_Result_Error_Encoder_GetTick)                                           \
-  X(FMW_Result_Error_Buzzer_Timer)                                              \
-  X(FMW_Result_Error_MessageHandler_InvalidState)                               \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveBaseline)                 \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveWheelCircumference)       \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveTicksPerRevolution)       \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveLEDUpdatePeriod)          \
-  X(FMW_Result_Error_Command_NotRecognized)                                     \
-  X(FMW_Result_Error_Command_NotAvailable)                                      \
-  X(FMW_Result_COUNT)
+#define FMW_RESULT_VARIANTS()                                                   \
+  X(FMW_Result_Ok, 0)                                                           \
+  X(FMW_Result_Error_InvalidArguments, 1)                                       \
+  X(FMW_Result_Error_FaultPinTriggered, 2)                                      \
+  X(FMW_Result_Error_UART_Crc, 3)                                               \
+  X(FMW_Result_Error_UART_NegativeTimeout, 4)                                   \
+  X(FMW_Result_Error_UART_ReceiveTimeoutElapsed, 5)                             \
+  X(FMW_Result_Error_UART_Parity, 6)                                            \
+  X(FMW_Result_Error_UART_Frame, 7)                                             \
+  X(FMW_Result_Error_UART_Noise, 8)                                             \
+  X(FMW_Result_Error_UART_Overrun, 9)                                           \
+  X(FMW_Result_Error_Encoder_InvalidTimer, 10)                                  \
+  X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution, 11)                 \
+  X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference, 12)                 \
+  X(FMW_Result_Error_Encoder_GetTick, 13)                                       \
+  X(FMW_Result_Error_Buzzer_Timer, 14)                                          \
+  X(FMW_Result_Error_MessageHandler_InvalidState, 15)                           \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveBaseline, 16)             \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveWheelCircumference, 17)   \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveTicksPerRevolution, 18)   \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveLEDUpdatePeriod, 19)      \
+  X(FMW_Result_Error_Command_NotRecognized, 20)                                 \
+  X(FMW_Result_Error_Command_NotAvailable, 21)                                  \
+  X(FMW_Result_COUNT, 22)
 
 typedef uint8_t FMW_Result;
 enum {
-#define X(Variant) Variant,
-  FMW_RESULT_VARIANTS(X)
+#define X(Variant, Id) Variant = Id,
+  FMW_RESULT_VARIANTS()
 #undef X
 };
 
