@@ -1,0 +1,5 @@
+float32 baseline
+float32 wheel_circumference_left
+float32 wheel_circumference_right
+uint32 ticks_per_revolution_left
+uint32 ticks_per_revolution_right

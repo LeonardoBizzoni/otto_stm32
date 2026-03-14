@@ -1,0 +1,4 @@
+float32 voltage_red
+float32 voltage_orange
+float32 voltage_hysteresis
+uint32 update_period

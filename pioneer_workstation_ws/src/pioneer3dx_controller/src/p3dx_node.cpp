@@ -1,5 +1,7 @@
 #include "p3dx_node.hpp"
 
+#include "pioneer3dx_controller/msg/change_mode.hpp"
+
 using namespace std::chrono_literals;
 
 P3DX_Controller_Node::P3DX_Controller_Node() :
@@ -96,7 +98,7 @@ void P3DX_Controller_Node::stm32_message_print(const FMW_Message *msg)
                                 "\n  header.crc  = %u",
                                 message_types[msg->header.type], msg->header.crc);
   assert(buffer_len > 0);
-  assert(buffer_len < sizeof(buffer));
+  assert(buffer_len < (int32_t)sizeof(buffer));
 
   switch (msg->header.type) {
   case FMW_MessageType_Response: {
@@ -108,7 +110,7 @@ void P3DX_Controller_Node::stm32_message_print(const FMW_Message *msg)
                            "\n    ticks_right  = %d",
                            result_types[msg->response.result], msg->response.delta_millis,
                            msg->response.ticks_left, msg->response.ticks_right);
-    assert(buffer_len < sizeof(buffer));
+    assert(buffer_len < (int32_t)sizeof(buffer));
   } break;
   default: {
     assert(false && "unreachable");
