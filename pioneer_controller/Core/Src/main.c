@@ -88,7 +88,7 @@ FMW_Odometry odometry = {
 
 // TODO(lb): fill with sensible default
 FMW_PidController pid_left = {
-  .ks = {
+  .ks.fields = {
     .proportional = 0.1f,
     .integral     = 0.1f,
     .derivative   = 0.1f,
@@ -97,7 +97,7 @@ FMW_PidController pid_left = {
 
 // TODO(lb): fill with sensible default
 FMW_PidController pid_right = {
-  .ks = {
+  .ks.fields = {
     .proportional = 0.1f,
     .integral     = 0.1f,
     .derivative   = 0.1f,
@@ -106,7 +106,7 @@ FMW_PidController pid_right = {
 
 // TODO(lb): fill with sensible default
 FMW_PidController pid_cross = {
-  .ks = {
+  .ks.fields = {
     .proportional = 0.1f,
     .integral     = 0.1f,
     .derivative   = 0.1f,
@@ -884,6 +884,7 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       pled.voltage_hysteresis = msg->config_led.voltage_hysteresis;
       led_update_period = msg->config_led.update_period;
     } break;
+    case FMW_MessageType_ModeChange_Config:
     case FMW_MessageType_Run_GetStatus:
     case FMW_MessageType_Run_SetVelocity: {
       result = FMW_Result_Error_Command_NotAvailable;

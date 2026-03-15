@@ -1,12 +1,14 @@
 #ifndef FMW_MESSAGE_H
 #define FMW_MESSAGE_H
 
+struct FMW_PidConstants_Fields {
+  float proportional;
+  float integral;
+  float derivative;
+};
+
 typedef union {
-  struct FMW_PidConstants_Fields {
-    float proportional;
-    float integral;
-    float derivative;
-  };
+  struct FMW_PidConstants_Fields fields;
   float values[3];
 } FMW_PidConstants;
 

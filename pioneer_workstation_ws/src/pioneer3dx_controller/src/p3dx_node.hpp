@@ -26,7 +26,7 @@ enum P3DX_Cmd_ChangeMode_Kind: uint8_t {
 
 struct P3DX_Controller_Node: public rclcpp::Node {
   const int32_t serial_fd;
-  bool stm32_running;
+  bool          stm32_running;
 
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr                 publisher_odometry;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr            subscriber_velocity;
@@ -38,12 +38,13 @@ struct P3DX_Controller_Node: public rclcpp::Node {
 
   P3DX_Controller_Node(void);
 
-  void callback_publish_odometry(void);
-  void callback_subscribe_command_velocity(const geometry_msgs::msg::Twist::SharedPtr cmd);
-  static void callback_service_command_change_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Request> request,
-                                                     std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Response> response);
+  void          callback_publish_odometry(void);
+  void          callback_subscribe_command_velocity(const geometry_msgs::msg::Twist::SharedPtr cmd);
+  static void   callback_service_command_change_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Request> request,
+                                                       std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Response> response);
 
-  void stm32_message_print(const FMW_Message *msg);
+  FMW_Message   stm32_message_send_change_mode(P3DX_Cmd_ChangeMode_Kind kind);
+  void          stm32_message_print(const FMW_Message *msg);
 };
 
 extern std::shared_ptr<P3DX_Controller_Node> p3dx_controller;

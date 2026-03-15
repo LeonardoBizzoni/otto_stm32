@@ -248,13 +248,13 @@ void fmw_odometry_setpoint_from_velocities(FMW_Odometry *odometry, float linear,
 // PID
 int32_t fmw_pid_update(FMW_PidController *pid, float velocity) {
   pid->error = pid->setpoint - velocity;
-  float output = pid->error * pid->ks.proportional;
+  float output = pid->error * pid->ks.fields.proportional;
 
   // integral term without windup
   pid->error_sum += pid->error;
-  output += pid->error_sum * pid->ks.integral;
+  output += pid->error_sum * pid->ks.fields.integral;
 
-  output += (pid->error - pid->previous_error) * pid->ks.derivative;
+  output += (pid->error - pid->previous_error) * pid->ks.fields.derivative;
   pid->previous_error = pid->error;
 
   // anti windup
