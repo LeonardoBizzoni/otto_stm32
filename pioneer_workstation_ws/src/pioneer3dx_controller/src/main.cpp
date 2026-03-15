@@ -8,11 +8,15 @@ std::shared_ptr<P3DX_Controller_Node> p3dx_controller = nullptr;
 
 int32_t main(int32_t argc, const char *argv[])
 {
+  int32_t serial_fd = serial_open("/dev/ttyACM0");
+  assert(serial_fd != -1);
+
   rclcpp::init(argc, argv);
-  p3dx_controller = std::make_shared<P3DX_Controller_Node>();
+  p3dx_controller = std::make_shared<P3DX_Controller_Node>(serial_fd);
   assert(p3dx_controller != nullptr);
   rclcpp::spin(p3dx_controller);
   rclcpp::shutdown();
+  close(serial_fd);
 }
 
 [[nodiscard]] int32_t serial_open(const char *portname)

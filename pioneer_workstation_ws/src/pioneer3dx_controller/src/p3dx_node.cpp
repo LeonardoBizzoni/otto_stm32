@@ -1,10 +1,19 @@
 #include "p3dx_node.hpp"
 
+#ifdef assert
+#  undef assert
+#endif
+#define assert(cond)                    \
+  do {                                  \
+    if (!(cond)) { __builtin_trap(); }  \
+  } while (false)
+
 using namespace std::chrono_literals;
 
-P3DX_Controller_Node::P3DX_Controller_Node() :
+P3DX_Controller_Node::P3DX_Controller_Node(int32_t serial_fd) :
   rclcpp::Node("P3DX_Controller_Node"),
-  serial_fd(serial_open("/dev/ttyACM0")),
+  serial_fd(serial_fd),
+  stm32_config_mode(false),
   publisher_odometry(this->create_publisher<nav_msgs::msg::Odometry>("odometry", 10)),
   subscriber_velocity(this->create_subscription<geometry_msgs::msg::Twist>("p3dx_command_velocity", 10,
                                                                            std::bind(&P3DX_Controller_Node::callback_subscribe_command_velocity,
@@ -26,21 +35,29 @@ P3DX_Controller_Node::P3DX_Controller_Node() :
 
 void P3DX_Controller_Node::callback_publish_odometry(void)
 {
-  if (!this->stm32_running) { return; }
+  if (this->stm32_config_mode) { return; }
 
-#if 0
   FMW_Message response, msg_get_status;
   msg_get_status.header.type = FMW_MessageType_Run_GetStatus;
   msg_get_status.header.crc = (uint32_t)-1;
-  size_t bytes_written = ::write(this->serial_fd, &msg_get_status, sizeof(FMW_Message));
-  (void)bytes_written;
+  this->serial_mutex.lock();
+  ssize_t bytes_written = ::write(this->serial_fd, &msg_get_status, sizeof(FMW_Message));
+  assert(bytes_written != -1);
+  assert(bytes_written == sizeof(msg_get_status));
   for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
     ssize_t n = ::read(this->serial_fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
     if (n >= 0) { bytes_read += (uint32_t)n; }
+    assert(n != -1);
   }
+  this->serial_mutex.unlock();
   assert(response.header.type == FMW_MessageType_Response);
-  stm32_message_print(&response);
-
+  this->stm32_message_print(&response);
+  if (response.response.result == FMW_Result_Error_Command_NotAvailable) {
+    this->stm32_config_mode = true;
+    return;
+  } else {
+    this->stm32_config_mode = false;
+  }
 
   nav_msgs::msg::Odometry output;
   output.header.frame_id = this->get_parameter("frame_id_odometry").as_string();
@@ -63,7 +80,6 @@ void P3DX_Controller_Node::callback_publish_odometry(void)
   assert(output.twist.twist.angular.z == 0);
 
   this->publisher_odometry->publish(output);
-#endif
 }
 
 void P3DX_Controller_Node::callback_subscribe_command_velocity(const geometry_msgs::msg::Twist::SharedPtr cmd)
@@ -74,18 +90,21 @@ void P3DX_Controller_Node::callback_subscribe_command_velocity(const geometry_ms
 void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Request> request,
                                                                   std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Response> response)
 {
-  RCLCPP_INFO(p3dx_controller->get_logger(), "%d", request->mode);
+  RCLCPP_INFO(p3dx_controller->get_logger(), "Requested mode: %d", request->mode);
   P3DX_Cmd_ChangeMode_Kind mode = (P3DX_Cmd_ChangeMode_Kind)request->mode;
   if (mode == P3DX_Cmd_ChangeMode_Kind::None || mode >= P3DX_Cmd_ChangeMode_Kind::COUNT) {
     RCLCPP_INFO(p3dx_controller->get_logger(), "invalid mode received");
     response->status_response = (uint8_t)FMW_Result_Error_Command_NotRecognized;
   } else {
+    FMW_MessageType type;
     switch (mode) {
     case P3DX_Cmd_ChangeMode_Kind::Config: {
       RCLCPP_INFO(p3dx_controller->get_logger(), "switching to config mode");
+      type = FMW_MessageType_ModeChange_Config;
     } break;
     case P3DX_Cmd_ChangeMode_Kind::Run: {
       RCLCPP_INFO(p3dx_controller->get_logger(), "switching to run mode");
+      type = FMW_MessageType_ModeChange_Run;
     } break;
     default: {
       assert(false && "unreachable");
@@ -94,12 +113,15 @@ void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::sha
 
     FMW_Message msg;
     ::memset(&msg, 0, sizeof(msg));
-    msg.header.type = (mode == P3DX_Cmd_ChangeMode_Kind::Config ? FMW_MessageType_ModeChange_Config : FMW_MessageType_ModeChange_Run);
+    msg.header.type = type;
     msg.header.crc = (uint32_t)-1;
 
     FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
     assert(response_msg.header.type == FMW_MessageType_Response);
     response->status_response = (uint8_t)response_msg.response.result;
+    if (response_msg.response.result == FMW_Result_Ok) {
+      p3dx_controller->stm32_config_mode = (mode == P3DX_Cmd_ChangeMode_Kind::Config);
+    }
   }
 }
 
@@ -180,14 +202,20 @@ FMW_Message P3DX_Controller_Node::stm32_message_send(const FMW_Message *msg)
   FMW_Message res;
   ::memset(&res, 0, sizeof(res));
 
-  // TODO(lb): only works once for some reason
-  size_t bytes_written = ::write(this->serial_fd, msg, sizeof(FMW_Message));
-  (void)bytes_written;
+  assert(msg != NULL);
+  assert(this->serial_fd > 0);
+  this->serial_mutex.lock();
+  ssize_t bytes_written = ::write(this->serial_fd, msg, sizeof(FMW_Message));
+  assert(bytes_written != -1);
+  assert(bytes_written > 0);
+  assert(bytes_written == sizeof(FMW_Message));
   RCLCPP_INFO(this->get_logger(), "message sent to stm32");
-  for (uint32_t bytes_read = 0; bytes_read < sizeof(msg);) {
+  for (uint32_t bytes_read = 0; bytes_read < sizeof(*msg);) {
     ssize_t n = ::read(this->serial_fd, ((uint8_t*)&res) + bytes_read, sizeof(res) - bytes_read);
+    assert(n != -1);
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
+  this->serial_mutex.unlock();
   this->stm32_message_print(&res);
   assert(res.header.type == FMW_MessageType_Response);
   return res;

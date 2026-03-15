@@ -1,6 +1,7 @@
 #ifndef P3DX_NODE_HPP
 #define P3DX_NODE_HPP
 
+#include <mutex>
 #include <memory>
 
 #include <rclcpp/rclcpp.hpp>
@@ -26,7 +27,8 @@ enum P3DX_Cmd_ChangeMode_Kind: uint8_t {
 
 struct P3DX_Controller_Node: public rclcpp::Node {
   const int32_t serial_fd;
-  bool          stm32_running;
+  bool          stm32_config_mode;
+  std::mutex    serial_mutex;
 
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr                 publisher_odometry;
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr            subscriber_velocity;
@@ -36,7 +38,7 @@ struct P3DX_Controller_Node: public rclcpp::Node {
   rclcpp::Service<pioneer3dx_controller::srv::ConfigLed>::SharedPtr     service_config_led;
   rclcpp::TimerBase::SharedPtr                                          timer_publisher_odometry;
 
-  P3DX_Controller_Node(void);
+  P3DX_Controller_Node(int32_t serial_fd);
 
   void          callback_publish_odometry(void);
   void          callback_subscribe_command_velocity(const geometry_msgs::msg::Twist::SharedPtr cmd);
