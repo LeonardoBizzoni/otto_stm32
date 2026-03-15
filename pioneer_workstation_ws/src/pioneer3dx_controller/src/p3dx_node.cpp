@@ -11,6 +11,12 @@ P3DX_Controller_Node::P3DX_Controller_Node() :
                                                                                      this, std::placeholders::_1))),
   service_change_mode(this->create_service<pioneer3dx_controller::srv::ChangeMode>("p3dx_command_change_mode",
                                                                                    &P3DX_Controller_Node::callback_service_command_change_mode_s)),
+  service_config_pid(this->create_service<pioneer3dx_controller::srv::ConfigPid>("p3dx_command_config_pid",
+                                                                                 &P3DX_Controller_Node::callback_service_command_config_pid_s)),
+  service_config_robot(this->create_service<pioneer3dx_controller::srv::ConfigRobot>("p3dx_command_config_robot",
+                                                                                     &P3DX_Controller_Node::callback_service_command_config_robot_s)),
+  service_config_led(this->create_service<pioneer3dx_controller::srv::ConfigLed>("p3dx_command_config_led",
+                                                                                 &P3DX_Controller_Node::callback_service_command_config_led_s)),
   timer_publisher_odometry(this->create_wall_timer(50ms, std::bind(&P3DX_Controller_Node::callback_publish_odometry, this)))
 {
   assert(this->serial_fd != -1);
@@ -68,8 +74,6 @@ void P3DX_Controller_Node::callback_subscribe_command_velocity(const geometry_ms
 void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Request> request,
                                                                   std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Response> response)
 {
-  (void)response;
-
   RCLCPP_INFO(p3dx_controller->get_logger(), "%d", request->mode);
   P3DX_Cmd_ChangeMode_Kind mode = (P3DX_Cmd_ChangeMode_Kind)request->mode;
   if (mode == P3DX_Cmd_ChangeMode_Kind::None || mode >= P3DX_Cmd_ChangeMode_Kind::COUNT) {
@@ -88,34 +92,105 @@ void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::sha
     } break;
     }
 
-    FMW_Message msg = p3dx_controller->stm32_message_send_change_mode(mode);
-    assert(msg.header.type == FMW_MessageType_Response);
-    response->status_response = (uint8_t)msg.response.result;
+    FMW_Message msg;
+    ::memset(&msg, 0, sizeof(msg));
+    msg.header.type = (mode == P3DX_Cmd_ChangeMode_Kind::Config ? FMW_MessageType_ModeChange_Config : FMW_MessageType_ModeChange_Run);
+    msg.header.crc = (uint32_t)-1;
+
+    FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+    assert(response_msg.header.type == FMW_MessageType_Response);
+    response->status_response = (uint8_t)response_msg.response.result;
   }
 }
 
-FMW_Message P3DX_Controller_Node::stm32_message_send_change_mode(P3DX_Cmd_ChangeMode_Kind kind)
+void P3DX_Controller_Node::callback_service_command_config_pid_s(const std::shared_ptr<pioneer3dx_controller::srv::ConfigPid::Request> request,
+                                                                 std::shared_ptr<pioneer3dx_controller::srv::ConfigPid::Response> response)
 {
-  assert(kind > P3DX_Cmd_ChangeMode_Kind::None);
-  assert(kind < P3DX_Cmd_ChangeMode_Kind::COUNT);
+  RCLCPP_INFO(p3dx_controller->get_logger(), "\nleft: {%f, %f, %f}"
+                                             "\nright: {%f, %f, %f}"
+                                             "\ncross: {%f, %f, %f}",
+              request->left[0], request->left[1], request->left[2],
+              request->right[0], request->right[1], request->right[2],
+              request->cross[0], request->cross[1], request->cross[2]);
+
   FMW_Message msg;
   ::memset(&msg, 0, sizeof(msg));
-  msg.header.type = (kind == P3DX_Cmd_ChangeMode_Kind::Config
-                     ? FMW_MessageType_ModeChange_Config
-                     : FMW_MessageType_ModeChange_Run);
+  msg.header.type = FMW_MessageType_Config_PID;
   msg.header.crc = (uint32_t)-1;
-  this->stm32_message_print(&msg);
-  size_t bytes_written = ::write(this->serial_fd, &msg, sizeof(FMW_Message));
-  RCLCPP_INFO(this->get_logger(), "message sent to stm32");
-  (void)bytes_written;
+  ::memcpy(msg.config_pid.left.values, request->left.data(), sizeof(msg.config_pid.left.values));
+  ::memcpy(msg.config_pid.right.values, request->right.data(), sizeof(msg.config_pid.left.values));
+  ::memcpy(msg.config_pid.cross.values, request->cross.data(), sizeof(msg.config_pid.left.values));
+
+  FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+  assert(response_msg.header.type == FMW_MessageType_Response);
+  response->status_response = (uint8_t)response_msg.response.result;
+}
+
+void P3DX_Controller_Node::callback_service_command_config_robot_s(const std::shared_ptr<pioneer3dx_controller::srv::ConfigRobot::Request> request,
+                                                                   std::shared_ptr<pioneer3dx_controller::srv::ConfigRobot::Response> response)
+{
+  RCLCPP_INFO(p3dx_controller->get_logger(), "\nbaseline: %f"
+                                             "\nwheel_circumference_left: %f"
+                                             "\nwheel_circumference_right: %f"
+                                             "\nticks_per_revolution_left: %u"
+                                             "\nticks_per_revolution_right: %u",
+              request->baseline, request->wheel_circumference_left, request->wheel_circumference_right,
+              request->ticks_per_revolution_left, request->ticks_per_revolution_right);
+
+  FMW_Message msg;
   ::memset(&msg, 0, sizeof(msg));
+  msg.header.type = FMW_MessageType_Config_Robot;
+  msg.header.crc = (uint32_t)-1;
+  msg.config_robot.baseline = request->baseline;
+  msg.config_robot.wheel_circumference_left = request->wheel_circumference_left;
+  msg.config_robot.wheel_circumference_right = request->wheel_circumference_right;
+  msg.config_robot.ticks_per_revolution_left = request->ticks_per_revolution_left;
+  msg.config_robot.ticks_per_revolution_right = request->ticks_per_revolution_right;
+
+  FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+  assert(response_msg.header.type == FMW_MessageType_Response);
+  response->status_response = (uint8_t)response_msg.response.result;
+}
+
+void P3DX_Controller_Node::callback_service_command_config_led_s(const std::shared_ptr<pioneer3dx_controller::srv::ConfigLed::Request> request,
+                                                                 std::shared_ptr<pioneer3dx_controller::srv::ConfigLed::Response> response)
+{
+  RCLCPP_INFO(p3dx_controller->get_logger(), "\nvoltage_red: %f"
+                                             "\nvoltage_orange: %f"
+                                             "\nvoltage_hysteresis: %f"
+                                             "\nupdate_period: %u",
+              request->voltage_red, request->voltage_orange, request->voltage_hysteresis, request->update_period);
+
+  FMW_Message msg;
+  ::memset(&msg, 0, sizeof(msg));
+  msg.header.type = FMW_MessageType_Config_LED;
+  msg.header.crc = (uint32_t)-1;
+  msg.config_led.voltage_red = request->voltage_red;
+  msg.config_led.voltage_orange = request->voltage_orange;
+  msg.config_led.voltage_hysteresis = request->voltage_hysteresis;
+  msg.config_led.update_period = request->update_period;
+
+  FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+  assert(response_msg.header.type == FMW_MessageType_Response);
+  response->status_response = (uint8_t)response_msg.response.result;
+}
+
+FMW_Message P3DX_Controller_Node::stm32_message_send(const FMW_Message *msg)
+{
+  FMW_Message res;
+  ::memset(&res, 0, sizeof(res));
+
+  // TODO(lb): only works once for some reason
+  size_t bytes_written = ::write(this->serial_fd, msg, sizeof(FMW_Message));
+  (void)bytes_written;
+  RCLCPP_INFO(this->get_logger(), "message sent to stm32");
   for (uint32_t bytes_read = 0; bytes_read < sizeof(msg);) {
-    ssize_t n = ::read(this->serial_fd, ((uint8_t*)&msg) + bytes_read, sizeof(msg) - bytes_read);
+    ssize_t n = ::read(this->serial_fd, ((uint8_t*)&res) + bytes_read, sizeof(res) - bytes_read);
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
-  this->stm32_message_print(&msg);
-  assert(msg.header.type == FMW_MessageType_Response);
-  return msg;
+  this->stm32_message_print(&res);
+  assert(res.header.type == FMW_MessageType_Response);
+  return res;
 }
 
 void P3DX_Controller_Node::stm32_message_print(const FMW_Message *msg)
