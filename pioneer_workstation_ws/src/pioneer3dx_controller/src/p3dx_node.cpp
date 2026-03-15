@@ -73,8 +73,8 @@ void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::sha
   RCLCPP_INFO(p3dx_controller->get_logger(), "%d", request->mode);
   P3DX_Cmd_ChangeMode_Kind mode = (P3DX_Cmd_ChangeMode_Kind)request->mode;
   if (mode == P3DX_Cmd_ChangeMode_Kind::None || mode >= P3DX_Cmd_ChangeMode_Kind::COUNT) {
-    // TODO(lb): respond with an error
     RCLCPP_INFO(p3dx_controller->get_logger(), "invalid mode received");
+    response->status_response = (uint8_t)FMW_Result_Error_Command_NotRecognized;
   } else {
     switch (mode) {
     case P3DX_Cmd_ChangeMode_Kind::Config: {
@@ -113,8 +113,8 @@ FMW_Message P3DX_Controller_Node::stm32_message_send_change_mode(P3DX_Cmd_Change
     ssize_t n = ::read(this->serial_fd, ((uint8_t*)&msg) + bytes_read, sizeof(msg) - bytes_read);
     if (n >= 0) { bytes_read += (uint32_t)n; }
   }
-  assert(msg.header.type == FMW_MessageType_Response);
   this->stm32_message_print(&msg);
+  assert(msg.header.type == FMW_MessageType_Response);
   return msg;
 }
 
