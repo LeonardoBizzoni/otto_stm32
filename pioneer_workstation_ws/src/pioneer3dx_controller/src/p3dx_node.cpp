@@ -1,17 +1,18 @@
 #include "p3dx_node.hpp"
 
-#include "pioneer3dx_controller/msg/change_mode.hpp"
-
 using namespace std::chrono_literals;
 
 P3DX_Controller_Node::P3DX_Controller_Node() :
-  rclcpp::Node("P3DX_Controller_Node"), serial_fd(serial_open("/dev/ttyACM0")),
+  rclcpp::Node("P3DX_Controller_Node"),
+  serial_fd(serial_open("/dev/ttyACM0")),
+  stm32_running(false),
   publisher_odometry(this->create_publisher<nav_msgs::msg::Odometry>("odometry", 10)),
-  subscriber_command_velocity(this->create_subscription<geometry_msgs::msg::Twist>("p3dx_command_velocity", 10,
-                                                                                   std::bind(&P3DX_Controller_Node::callback_subscribe_command_velocity,
-                                                                                             this, std::placeholders::_1))),
-  publisher_odometry_timer(this->create_wall_timer(50ms, std::bind(&P3DX_Controller_Node::callback_publish_odometry, this))),
-  stm32_running(false)
+  subscriber_velocity(this->create_subscription<geometry_msgs::msg::Twist>("p3dx_command_velocity", 10,
+                                                                           std::bind(&P3DX_Controller_Node::callback_subscribe_command_velocity,
+                                                                                     this, std::placeholders::_1))),
+  service_change_mode(this->create_service<pioneer3dx_controller::srv::ChangeMode>("p3dx_command_change_mode",
+                                                                                   &P3DX_Controller_Node::callback_service_command_change_mode_s)),
+  timer_publisher_odometry(this->create_wall_timer(50ms, std::bind(&P3DX_Controller_Node::callback_publish_odometry, this)))
 {
   assert(this->serial_fd != -1);
 
@@ -22,7 +23,8 @@ P3DX_Controller_Node::P3DX_Controller_Node() :
   FMW_Message response, msg_run;
   msg_run.header.type = FMW_MessageType_ModeChange_Run;
   msg_run.header.crc = (uint32_t)-1;
-  (void)::write(this->serial_fd, &msg_run, sizeof(FMW_Message));
+  size_t bytes_written = ::write(this->serial_fd, &msg_run, sizeof(FMW_Message));
+  (void)bytes_written;
   for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
     ssize_t n = ::read(this->serial_fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
     if (n >= 0) { bytes_read += (uint32_t)n; }
@@ -40,7 +42,8 @@ void P3DX_Controller_Node::callback_publish_odometry(void)
   FMW_Message response, msg_get_status;
   msg_get_status.header.type = FMW_MessageType_Run_GetStatus;
   msg_get_status.header.crc = (uint32_t)-1;
-  (void)::write(this->serial_fd, &msg_get_status, sizeof(FMW_Message));
+  size_t bytes_written = ::write(this->serial_fd, &msg_get_status, sizeof(FMW_Message));
+  (void)bytes_written;
   for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
     ssize_t n = ::read(this->serial_fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
     if (n >= 0) { bytes_read += (uint32_t)n; }
@@ -75,6 +78,31 @@ void P3DX_Controller_Node::callback_publish_odometry(void)
 void P3DX_Controller_Node::callback_subscribe_command_velocity(const geometry_msgs::msg::Twist::SharedPtr cmd)
 {
   (void)cmd;
+}
+
+void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Request> request,
+                                                                  std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Response> response)
+{
+  (void)response;
+
+  RCLCPP_INFO(p3dx_controller->get_logger(), "%d", request->mode);
+  P3DX_Cmd_ChangeMode_Kind mode = (P3DX_Cmd_ChangeMode_Kind)request->mode;
+  if (mode == P3DX_Cmd_ChangeMode_Kind::None || mode >= P3DX_Cmd_ChangeMode_Kind::COUNT) {
+    // TODO(lb): respond with an error
+    RCLCPP_INFO(p3dx_controller->get_logger(), "invalid mode received");
+  } else {
+    switch (mode) {
+    case P3DX_Cmd_ChangeMode_Kind::Config: {
+      RCLCPP_INFO(p3dx_controller->get_logger(), "switching to config mode");
+    } break;
+    case P3DX_Cmd_ChangeMode_Kind::Run: {
+      RCLCPP_INFO(p3dx_controller->get_logger(), "switching to run mode");
+    } break;
+    default: {
+      assert(false && "unreachable");
+    } break;
+    }
+  }
 }
 
 void P3DX_Controller_Node::stm32_message_print(const FMW_Message *msg)
@@ -116,5 +144,5 @@ void P3DX_Controller_Node::stm32_message_print(const FMW_Message *msg)
     assert(false && "unreachable");
   } break;
   }
-  RCLCPP_INFO(this->get_logger(), "%s\n}", buffer);
+  // RCLCPP_INFO(this->get_logger(), "%s\n}", buffer);
 }

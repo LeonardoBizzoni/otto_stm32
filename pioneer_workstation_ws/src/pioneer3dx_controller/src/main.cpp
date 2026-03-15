@@ -4,10 +4,14 @@
 #include "main.hpp"
 #include "p3dx_node.hpp"
 
+std::shared_ptr<P3DX_Controller_Node> p3dx_controller = nullptr;
+
 int32_t main(int32_t argc, const char *argv[])
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<P3DX_Controller_Node>());
+  p3dx_controller = std::make_shared<P3DX_Controller_Node>();
+  assert(p3dx_controller != nullptr);
+  rclcpp::spin(p3dx_controller);
   rclcpp::shutdown();
 }
 

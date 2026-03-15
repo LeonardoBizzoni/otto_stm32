@@ -4,4 +4,4 @@ float32 wheel_circumference_right
 uint32 ticks_per_revolution_left
 uint32 ticks_per_revolution_right
 ---
-byte status_response
+uint8 status_response
