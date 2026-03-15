@@ -41,13 +41,15 @@ void P3DX_Controller_Node::callback_publish_odometry(void)
   msg_get_status.header.type = FMW_MessageType_Run_GetStatus;
   msg_get_status.header.crc = (uint32_t)-1;
   this->serial_mutex.lock();
-  ssize_t bytes_written = ::write(this->serial_fd, &msg_get_status, sizeof(FMW_Message));
-  assert(bytes_written != -1);
-  assert(bytes_written == sizeof(msg_get_status));
-  for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
-    ssize_t n = ::read(this->serial_fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
-    if (n >= 0) { bytes_read += (uint32_t)n; }
-    assert(n != -1);
+  {
+    ssize_t bytes_written = ::write(this->serial_fd, &msg_get_status, sizeof(FMW_Message));
+    assert(bytes_written != -1);
+    assert(bytes_written == sizeof(msg_get_status));
+    for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
+      ssize_t n = ::read(this->serial_fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
+      if (n >= 0) { bytes_read += (uint32_t)n; }
+      assert(n != -1);
+    }
   }
   this->serial_mutex.unlock();
   assert(response.header.type == FMW_MessageType_Response);
@@ -205,15 +207,17 @@ FMW_Message P3DX_Controller_Node::stm32_message_send(const FMW_Message *msg)
   assert(msg != NULL);
   assert(this->serial_fd > 0);
   this->serial_mutex.lock();
-  ssize_t bytes_written = ::write(this->serial_fd, msg, sizeof(FMW_Message));
-  assert(bytes_written != -1);
-  assert(bytes_written > 0);
-  assert(bytes_written == sizeof(FMW_Message));
-  RCLCPP_INFO(this->get_logger(), "message sent to stm32");
-  for (uint32_t bytes_read = 0; bytes_read < sizeof(*msg);) {
-    ssize_t n = ::read(this->serial_fd, ((uint8_t*)&res) + bytes_read, sizeof(res) - bytes_read);
-    assert(n != -1);
-    if (n >= 0) { bytes_read += (uint32_t)n; }
+  {
+    ssize_t bytes_written = ::write(this->serial_fd, msg, sizeof(FMW_Message));
+    assert(bytes_written != -1);
+    assert(bytes_written > 0);
+    assert(bytes_written == sizeof(FMW_Message));
+    RCLCPP_INFO(this->get_logger(), "message sent to stm32");
+    for (uint32_t bytes_read = 0; bytes_read < sizeof(*msg);) {
+      ssize_t n = ::read(this->serial_fd, ((uint8_t*)&res) + bytes_read, sizeof(res) - bytes_read);
+      assert(n != -1);
+      if (n >= 0) { bytes_read += (uint32_t)n; }
+    }
   }
   this->serial_mutex.unlock();
   this->stm32_message_print(&res);
