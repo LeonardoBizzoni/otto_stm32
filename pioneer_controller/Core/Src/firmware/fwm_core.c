@@ -2,6 +2,7 @@
 #include "firmware/fmw_inc.h"
 
 #include <string.h>
+#include <math.h>
 
 static struct {
   FMW_Motor *motors;
@@ -56,6 +57,15 @@ FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart) {
     FMW_ASSERT(false, .callback = fmw_hook_assert_fail);
   } break;
   }
+  return res;
+}
+
+Vec2Float fmw_setpoint_from_velocities(const FMW_Odometry *odometry, float linear, float angular) {
+  FMW_ASSERT(odometry->baseline > 0.f, .callback = fmw_hook_assert_fail);
+  Vec2Float res = {
+    .left = linear - (odometry->baseline * angular) / 2.f,
+    .right = linear + (odometry->baseline * angular) / 2.f,
+  };
   return res;
 }
 
@@ -206,23 +216,20 @@ void fmw_encoders_deinit(FMW_Encoder encoders[], int32_t count) {
   }
 }
 
-void fmw_encoder_update(FMW_Encoder *encoder) {
-  encoder->previous_millis = encoder->current_millis;
-  encoder->current_millis = HAL_GetTick();
-  encoder->ticks = fmw_encoder_count_get(encoder);
-  fmw_encoder_count_reset(encoder);
-  FMW_ASSERT(encoder->current_millis >= encoder->previous_millis, .callback = fmw_hook_assert_fail);
+void fmw_encoders_update(FMW_Encoder encoders[], int32_t count) {
+  for (int32_t i = 0; i < count; ++i) {
+    encoders[i].previous_millis = encoders[i].current_millis;
+    encoders[i].current_millis = HAL_GetTick();
+    encoders[i].ticks = fmw_encoder_count_get(&encoders[i]);
+    fmw_encoder_count_reset(&encoders[i]);
+    FMW_ASSERT(encoders[i].current_millis >= encoders[i].previous_millis, .callback = fmw_hook_assert_fail);
+  }
 }
 
-float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder) {
+float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder, float meters_traveled) {
   float deltatime = encoder->current_millis - encoder->previous_millis;
   FMW_ASSERT(deltatime > 0.f, .callback = fmw_hook_assert_fail);
-  float meters = FMW_METERS_FROM_TICKS(encoder->ticks,
-                                       encoder->wheel_circumference,
-                                       encoder->ticks_per_revolution);
-  FMW_ASSERT(meters >= 0.f, .callback = fmw_hook_assert_fail);
-  float linear_velocity = meters / (deltatime / 1000.f);
-  FMW_ASSERT(linear_velocity >= 0.f, .callback = fmw_hook_assert_fail);
+  float linear_velocity = meters_traveled / (deltatime / 1000.f);
   return linear_velocity;
 }
 
@@ -233,15 +240,56 @@ void fmw_encoder_count_reset(FMW_Encoder *encoder) {
 
 int32_t fmw_encoder_count_get(const FMW_Encoder *encoder) {
   FMW_ASSERT(encoder->timer != NULL, .callback = fmw_hook_assert_fail);
-  return (int32_t)__HAL_TIM_GET_COUNTER(encoder->timer) - (encoder->timer->Init.Period / 2);
+  int32_t res = (int32_t)__HAL_TIM_GET_COUNTER(encoder->timer) - (encoder->timer->Init.Period / 2);
+  return res;
 }
 
 // ============================================================
 // Odometry
-void fmw_odometry_setpoint_from_velocities(FMW_Odometry *odometry, float linear, float angular) {
-  FMW_ASSERT(odometry->baseline > 0.f, .callback = fmw_hook_assert_fail);
-  odometry->setpoint_left = linear - (odometry->baseline * angular) / 2;
-  odometry->setpoint_right = linear + (odometry->baseline * angular) / 2;
+void fmw_odometry_pose_update(FMW_Odometry *odometry, float meters_traveled_left, float meters_traveled_right) {
+  static Mat3Float robot_pose  = {{{1.f, 0.f, 0.f}, {0.f, 1.f, 0.f}, {0.f, 0.f, 1.f}}};
+  static const float tolerance = 0.005f;
+
+  Mat3Float robot_robotranslation = {0};
+  Mat3Float robot_from_cir = {0};
+  Mat3Float cir_rotation = {0};
+  Mat3Float cir_from_robot = {0};
+
+  // calcolo dell'angolo di rotazione
+  float theta = -(meters_traveled_left - meters_traveled_right) / odometry->baseline;
+
+  // soglia di tolleranza -> controllo la direzione del robot se va dritto
+  if (ABS(theta) < tolerance) {
+    /* traslazione lungo x, calcolo della matrice di rototraslazione per traiettoria dritta */
+    robot_robotranslation.values[0][0] = 1; robot_robotranslation.values[0][1] = 0; robot_robotranslation.values[0][2] = (meters_traveled_left + meters_traveled_right) / 2;
+    robot_robotranslation.values[1][0] = 0; robot_robotranslation.values[1][1] = 1; robot_robotranslation.values[1][2] = 0;
+    robot_robotranslation.values[2][0] = 0; robot_robotranslation.values[2][1] = 0; robot_robotranslation.values[2][2] = 1;
+  } else {
+    // traiettoria lungo una curva
+    // distanza del centro del robot dal CIR
+    float d_cir = (meters_traveled_right / theta) - (odometry->baseline / 2.f);
+    // matrice cir_from_robot di traslazione al CIR
+    cir_from_robot.values[0][0] = 1; cir_from_robot.values[0][1] = 0; cir_from_robot.values[0][2] = 0;
+    cir_from_robot.values[1][0] = 0; cir_from_robot.values[1][1] = 1; cir_from_robot.values[1][2] = -d_cir;
+    cir_from_robot.values[2][0] = 0; cir_from_robot.values[2][1] = 0; cir_from_robot.values[2][2] = 1;
+    // matrice r di rotazione attorno al CIR
+    cir_rotation.values[0][0] = cosf(theta); cir_rotation.values[0][1] = -sinf(theta); cir_rotation.values[0][2] = 0;
+    cir_rotation.values[1][0] = sinf(theta); cir_rotation.values[1][1] = cosf(theta);  cir_rotation.values[1][2] = 0;
+    cir_rotation.values[2][0] = 0;           cir_rotation.values[2][1] = 0;            cir_rotation.values[2][2] = 1;
+    // matrice robot_from_cir di ri-traslazione dal CIR
+    robot_from_cir.values[0][0] = 1; robot_from_cir.values[0][1] = 0; robot_from_cir.values[0][2] = 0;
+    robot_from_cir.values[1][0] = 0; robot_from_cir.values[1][1] = 1; robot_from_cir.values[1][2] = d_cir;
+    robot_from_cir.values[2][0] = 0; robot_from_cir.values[2][1] = 0; robot_from_cir.values[2][2] = 1;
+    // calcolo matrice di ROTOTRASLAZIONE corrente
+    robot_robotranslation = mat3float_multiply(robot_from_cir, mat3float_multiply(cir_rotation, cir_from_robot));
+  }
+
+  // calcolo (nuova) ROBOT_POSE
+  robot_pose = mat3float_multiply(robot_pose, robot_robotranslation);
+  odometry->position.x = robot_pose.values[0][2];
+  odometry->position.y = robot_pose.values[1][2];
+  odometry->orientation.x = robot_pose.values[0][0];
+  odometry->orientation.y = robot_pose.values[0][1];
 }
 
 // ============================================================

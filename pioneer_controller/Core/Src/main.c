@@ -815,6 +815,20 @@ void start(void) {
   }
 }
 
+Mat3Float mat3float_multiply(Mat3Float lhs, Mat3Float rhs) {
+  Mat3Float output = {0};
+  output.values[0][0] = (lhs.values[0][0] * rhs.values[0][0]) + (lhs.values[0][1] * rhs.values[1][0]) + (lhs.values[0][2] * rhs.values[2][0]);
+  output.values[0][1] = (lhs.values[0][0] * rhs.values[0][1]) + (lhs.values[0][1] * rhs.values[1][1]) + (lhs.values[0][2] * rhs.values[2][1]);
+  output.values[0][2] = (lhs.values[0][0] * rhs.values[0][2]) + (lhs.values[0][1] * rhs.values[1][2]) + (lhs.values[0][2] * rhs.values[2][2]);
+  output.values[1][0] = (lhs.values[1][0] * rhs.values[0][0]) + (lhs.values[1][1] * rhs.values[1][0]) + (lhs.values[1][2] * rhs.values[2][0]);
+  output.values[1][1] = (lhs.values[1][0] * rhs.values[0][1]) + (lhs.values[1][1] * rhs.values[1][1]) + (lhs.values[1][2] * rhs.values[2][1]);
+  output.values[1][2] = (lhs.values[1][0] * rhs.values[0][2]) + (lhs.values[1][1] * rhs.values[1][2]) + (lhs.values[1][2] * rhs.values[2][2]);
+  output.values[2][0] = (lhs.values[2][0] * rhs.values[0][0]) + (lhs.values[2][1] * rhs.values[1][0]) + (lhs.values[2][2] * rhs.values[2][0]);
+  output.values[2][1] = (lhs.values[2][0] * rhs.values[0][1]) + (lhs.values[2][1] * rhs.values[1][1]) + (lhs.values[2][2] * rhs.values[2][1]);
+  output.values[2][2] = (lhs.values[2][0] * rhs.values[0][2]) + (lhs.values[2][1] * rhs.values[1][2]) + (lhs.values[2][2] * rhs.values[2][2]);
+  return output;
+}
+
 FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   // NOTE(lb): the `msg->header.crc != -1` checks are just because i haven't
   //           implemented CRC into the program that sends these messages.
@@ -899,10 +913,10 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   case FMW_Mode_Run: {
     switch (msg->header.type) {
     case FMW_MessageType_Run_SetVelocity: {
-      fmw_odometry_setpoint_from_velocities(&odometry, msg->run_set_velocity.linear, msg->run_set_velocity.angular);
-      pid_left.setpoint  = odometry.setpoint_left;
-      pid_right.setpoint = odometry.setpoint_right;
-      pid_cross.setpoint = odometry.setpoint_left - odometry.setpoint_right;
+      Vec2Float setpoint = fmw_setpoint_from_velocities(&odometry, msg->run_set_velocity.linear, msg->run_set_velocity.angular);
+      pid_left.setpoint  = setpoint.left;
+      pid_right.setpoint = setpoint.right;
+      pid_cross.setpoint = setpoint.left - setpoint.right;
     } // fallthrough
     case FMW_MessageType_Run_GetStatus: {
       // NOTE(lb): SetVelocity continues here as well because the previous case doesn't end with a `break`.
@@ -923,6 +937,12 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       msg.response.delta_millis = time_millis_delta;
       msg.response.ticks_left = current_ticks_left;
       msg.response.ticks_right = current_ticks_right;
+      msg.response.position_x = odometry.position.x;
+      msg.response.position_y = odometry.position.y;
+      msg.response.orientation_x = odometry.orientation.x;
+      msg.response.orientation_y = odometry.orientation.y;
+      msg.response.velocity_linear = (odometry.velocity_linear.left + odometry.velocity_linear.right) / 2.f;
+      msg.response.velocity_angular = odometry.velocity_angular;
       msg.header.crc = HAL_CRC_Calculate(hcrc, (uint32_t*)&msg, sizeof msg);
       (void)HAL_UART_Transmit(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&msg, sizeof msg, HAL_MAX_DELAY);
       return FMW_Result_Ok;
@@ -973,17 +993,23 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim != &htim6) { return; }
 
-  // NOTE(lb): metrics taken for transmission
-  ticks_left  += fmw_encoder_count_get(&encoders.left);
-  ticks_right += fmw_encoder_count_get(&encoders.right);
-
   { // PID control
-    fmw_encoder_update(&encoders.left);
-    float velocity_left = fmw_encoder_get_linear_velocity(&encoders.left);
-    int32_t dutycycle_left = fmw_pid_update(&pid_left, velocity_left);
+    fmw_encoders_update(encoders.values, ARRLENGTH(encoders.values));
+    ticks_left += encoders.left.ticks;
+    ticks_right += encoders.right.ticks;
 
-    fmw_encoder_update(&encoders.right);
-    float velocity_right = fmw_encoder_get_linear_velocity(&encoders.right);
+    float meters_traveled_left = FMW_METERS_FROM_TICKS(encoders.left.ticks, encoders.left.wheel_circumference, encoders.left.ticks_per_revolution);
+    float meters_traveled_right = FMW_METERS_FROM_TICKS(encoders.right.ticks, encoders.right.wheel_circumference, encoders.right.ticks_per_revolution);
+
+    fmw_odometry_pose_update(&odometry, meters_traveled_left, meters_traveled_right);
+
+    float velocity_left = fmw_encoder_get_linear_velocity(&encoders.left, meters_traveled_left);
+    float velocity_right = fmw_encoder_get_linear_velocity(&encoders.right, meters_traveled_right);
+    odometry.velocity_linear.left = velocity_left;
+    odometry.velocity_linear.right = velocity_right;
+    odometry.velocity_angular = (velocity_right - velocity_left) / odometry.baseline;
+
+    int32_t dutycycle_left = fmw_pid_update(&pid_left, velocity_left);
     int32_t dutycycle_right = fmw_pid_update(&pid_right, velocity_right);
     int32_t dutycycle_cross = fmw_pid_update(&pid_cross, velocity_left - velocity_right);
 

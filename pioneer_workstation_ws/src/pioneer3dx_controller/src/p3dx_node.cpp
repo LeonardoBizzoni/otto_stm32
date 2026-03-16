@@ -37,21 +37,10 @@ void P3DX_Controller_Node::callback_publish_odometry(void)
 {
   if (this->stm32_config_mode) { return; }
 
-  FMW_Message response, msg_get_status;
+  FMW_Message msg_get_status;
   msg_get_status.header.type = FMW_MessageType_Run_GetStatus;
   msg_get_status.header.crc = (uint32_t)-1;
-  this->serial_mutex.lock();
-  {
-    ssize_t bytes_written = ::write(this->serial_fd, &msg_get_status, sizeof(FMW_Message));
-    assert(bytes_written != -1);
-    assert(bytes_written == sizeof(msg_get_status));
-    for (uint32_t bytes_read = 0; bytes_read < sizeof(response);) {
-      ssize_t n = ::read(this->serial_fd, ((uint8_t*)&response) + bytes_read, sizeof(response) - bytes_read);
-      if (n >= 0) { bytes_read += (uint32_t)n; }
-      assert(n != -1);
-    }
-  }
-  this->serial_mutex.unlock();
+  FMW_Message response = this->stm32_message_send(&msg_get_status);
   assert(response.header.type == FMW_MessageType_Response);
   this->stm32_message_print(&response);
   if (response.response.result == FMW_Result_Error_Command_NotAvailable) {
@@ -65,28 +54,31 @@ void P3DX_Controller_Node::callback_publish_odometry(void)
   output.header.frame_id = this->get_parameter("frame_id_odometry").as_string();
   output.header.stamp = rclcpp::Time(0, 0, this->get_clock()->now().get_clock_type());
 
-  // output.pose.pose.position.x = ;    // TODO(lb): fill with pioneer data
-  // output.pose.pose.position.y = ;    // TODO(lb): fill with pioneer data
-  // output.pose.pose.orientation.x = ; // TODO(lb): fill with pioneer data
-  // output.pose.pose.orientation.y = ; // TODO(lb): fill with pioneer data
+  output.pose.pose.position.x = response.response.position_x;
+  output.pose.pose.position.y = response.response.position_y;
+  output.pose.pose.orientation.x = response.response.orientation_x;
+  output.pose.pose.orientation.y = response.response.orientation_y;
 
-  // output.twist.twist.linear.x = ;  // TODO(lb): fill with pioneer data
-  // output.twist.twist.linear.y = ;  // TODO(lb): fill with pioneer data
-  // output.twist.twist.angular.x = ; // TODO(lb): fill with pioneer data
-  // output.twist.twist.angular.y = ; // TODO(lb): fill with pioneer data
-
-  assert(output.pose.pose.position.z == 0);
-  assert(output.pose.pose.orientation.z == 0);
-  assert(output.pose.pose.orientation.w == 1);
-  assert(output.twist.twist.linear.z == 0);
-  assert(output.twist.twist.angular.z == 0);
+  output.twist.twist.linear.x = response.response.velocity_linear;
+  output.twist.twist.angular.x = response.response.velocity_angular;
 
   this->publisher_odometry->publish(output);
 }
 
 void P3DX_Controller_Node::callback_subscribe_command_velocity(const geometry_msgs::msg::Twist::SharedPtr cmd)
 {
-  (void)cmd;
+  if (this->stm32_config_mode) { return; }
+
+  FMW_Message msg;
+  ::memset(&msg, 0, sizeof(msg));
+  msg.header.type = FMW_MessageType_Run_SetVelocity;
+  msg.header.crc = (uint32_t)-1;
+  msg.run_set_velocity.linear = cmd->linear.x;
+  msg.run_set_velocity.angular = cmd->angular.x;
+
+  FMW_Message response_msg = this->stm32_message_send(&msg);
+  assert(response_msg.header.type == FMW_MessageType_Response);
+  assert(response_msg.response.result == FMW_Result_Ok);
 }
 
 void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::ChangeMode::Request> request,
@@ -252,12 +244,21 @@ void P3DX_Controller_Node::stm32_message_print(const FMW_Message *msg)
   case FMW_MessageType_Response: {
     buffer_len += snprintf(buffer + buffer_len, sizeof(buffer) - buffer_len,
                            "\n  response:"
-                           "\n    result       = %s"
-                           "\n    delta_millis = %d"
-                           "\n    ticks_left   = %d"
-                           "\n    ticks_right  = %d",
+                           "\n    result                = %s"
+                           "\n    delta_millis          = %d"
+                           "\n    ticks_left            = %d"
+                           "\n    ticks_right           = %d"
+                           "\n    position_x            = %f"
+                           "\n    position_y            = %f"
+                           "\n    orientation_x         = %f"
+                           "\n    orientation_y         = %f"
+                           "\n    velocity_linear       = %f"
+                           "\n    velocity_angular      = %f",
                            result_types[msg->response.result], msg->response.delta_millis,
-                           msg->response.ticks_left, msg->response.ticks_right);
+                           msg->response.ticks_left, msg->response.ticks_right,
+                           msg->response.position_x, msg->response.position_y,
+                           msg->response.orientation_x, msg->response.orientation_y,
+                           msg->response.velocity_linear, msg->response.velocity_angular);
     assert(buffer_len < (int32_t)sizeof(buffer));
   } break;
   default: {

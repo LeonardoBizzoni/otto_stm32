@@ -62,7 +62,21 @@ extern int32_t pid_min;
 
 #define ARRLENGTH(Arr) (sizeof((Arr)) / sizeof(*(Arr)))
 
+typedef union Vec2Float Vec2Float;
+union Vec2Float {
+  float values[2];
+  struct { float x, y; };
+  struct { float left, right; };
+};
+
+typedef union Mat3Float Mat3Float;
+union Mat3Float {
+  float values[3][3];
+  float sequence[9];
+};
+
 void start(void) __attribute__((noreturn));
+Mat3Float mat3float_multiply(Mat3Float lhs, Mat3Float rhs);
 
 /* USER CODE END EM */
 

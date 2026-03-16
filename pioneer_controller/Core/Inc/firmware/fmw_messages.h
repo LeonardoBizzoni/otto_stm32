@@ -107,10 +107,15 @@ typedef struct FMW_Message {
       float angular;
     } run_set_velocity;
 
-    // TODO(lb): add odometry information
     struct {
       int32_t ticks_left;
       int32_t ticks_right;
+      float position_x;
+      float position_y;
+      float orientation_x;
+      float orientation_y;
+      float velocity_linear;
+      float velocity_angular;
       uint16_t delta_millis;
       FMW_Result result;
     } response;
@@ -118,9 +123,10 @@ typedef struct FMW_Message {
 } FMW_Message;
 #pragma pack(pop)
 
-static_assert(sizeof(uint8_t)   == 1);
-static_assert(sizeof(uint16_t)  == 2);
-static_assert(sizeof(uint32_t)  == 4);
-static_assert(sizeof(float)     == 4);
+static_assert(sizeof(uint8_t)     == 1);
+static_assert(sizeof(uint16_t)    == 2);
+static_assert(sizeof(uint32_t)    == 4);
+static_assert(sizeof(float)       == 4);
+static_assert(sizeof(FMW_Message) == 41);
 
 #endif /* INC_COMMUNICATION_OTTO_MESSAGES_H_ */

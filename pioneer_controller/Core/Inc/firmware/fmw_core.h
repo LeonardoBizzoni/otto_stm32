@@ -36,11 +36,11 @@ enum {
 };
 
 typedef struct {
-  float baseline; // NOTE(lb): measured in meters
-  float velocity_linear;
+  float baseline;       // NOTE(lb): measured in meters
+  Vec2Float position;   // NOTE(lb): measured in meters
+  Vec2Float orientation;
+  Vec2Float velocity_linear; // NOTE(lb): measured in m/s
   float velocity_angular;
-  float setpoint_right;
-  float setpoint_left;
 } FMW_Odometry;
 
 typedef struct {
@@ -86,16 +86,16 @@ void fmw_motors_enable(FMW_Motor motors[], int32_t count)       __attribute__((n
 void fmw_motors_disable(FMW_Motor motors[], int32_t count)      __attribute__((nonnull));
 void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle)  __attribute__((nonnull));
 
-void fmw_encoders_init(FMW_Encoder encoders[], int32_t count)           __attribute__((nonnull));
-void fmw_encoders_deinit(FMW_Encoder encoders[], int32_t count)         __attribute__((nonnull));
-void fmw_encoder_update(FMW_Encoder *encoder)                           __attribute__((nonnull));
-float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder)       __attribute__((warn_unused_result, nonnull));
-void fmw_encoder_count_reset(FMW_Encoder *encoder)                      __attribute__((nonnull));
-int32_t fmw_encoder_count_get(const FMW_Encoder *encoder)               __attribute__((warn_unused_result, nonnull));
+void fmw_encoders_init(FMW_Encoder encoders[], int32_t count)                                   __attribute__((nonnull));
+void fmw_encoders_deinit(FMW_Encoder encoders[], int32_t count)                                 __attribute__((nonnull));
+void fmw_encoders_update(FMW_Encoder encoders[], int32_t count)                                 __attribute__((nonnull));
+float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder, float meters_traveled)        __attribute__((warn_unused_result, nonnull));
+void fmw_encoder_count_reset(FMW_Encoder *encoder)                                              __attribute__((nonnull));
+int32_t fmw_encoder_count_get(const FMW_Encoder *encoder)                                       __attribute__((warn_unused_result, nonnull));
+
+void fmw_odometry_pose_update(FMW_Odometry *odometry, float meters_traveled_left, float meters_traveled_right) __attribute__((nonnull));
 
 int32_t fmw_pid_update(FMW_PidController *pid, float velocity) __attribute__((warn_unused_result, nonnull));
-
-void fmw_odometry_setpoint_from_velocities(FMW_Odometry *odometry, float linear, float angular) __attribute__((nonnull));
 
 void fmw_led_init(FMW_Led *led)         __attribute__((nonnull));
 void fmw_led_deinit(FMW_Led *led)       __attribute__((nonnull));
@@ -103,11 +103,12 @@ void fmw_led_update(FMW_Led *led)       __attribute__((nonnull));
 
 void fmw_buzzers_set(FMW_Buzzer buzzer[], int32_t count, bool on) __attribute__((nonnull));
 
-FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg, int32_t wait_ms) __attribute__((warn_unused_result, nonnull));
+FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg, int32_t wait_ms)       __attribute__((warn_unused_result, nonnull));
 HAL_StatusTypeDef fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc,
-                                        FMW_Message *msg, int32_t wait_ms)                        __attribute__((nonnull, warn_unused_result));
+                                        FMW_Message *msg, int32_t wait_ms)                              __attribute__((nonnull, warn_unused_result));
+FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart)                                __attribute__((nonnull, warn_unused_result));
 
-FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart);
+Vec2Float fmw_setpoint_from_velocities(const FMW_Odometry *odometry, float linear, float angular) __attribute__((nonnull));
 
 #define FMW_LED_UPDATE_PERIOD 200
 #define FMW_DEBOUNCE_DELAY 200
