@@ -5,9 +5,30 @@
 #include <math.h>
 
 static struct {
+  void (*callback_message_handler)(FMW_Message *msg, CRC_HandleTypeDef *hcrc);
+  void (*callback_emergency_begin)(void);
+  void (*callback_emergency_end)(void);
+
+  TIM_HandleTypeDef *emergency_timer;
+  uint32_t emergency_mode_grace_period_ms;
+  volatile uint32_t emergency_last_message_received_time;
+
   FMW_Motor *motors;
   int32_t motors_count;
-} fmw_state;
+  bool motors_active;
+  bool motors_active_before_emergency;
+
+  UART_HandleTypeDef *huart;
+  CRC_HandleTypeDef *hcrc;
+
+  volatile FMW_Message uart_buffer;
+  volatile FMW_Mode mode_current;
+  volatile FMW_Mode mode_previous;
+} fmw_state = {
+  .emergency_mode_grace_period_ms = 1000,
+  .mode_current  = FMW_Mode_Config,
+  .mode_previous = FMW_Mode_None,
+};
 
 static void fmw_hook_assert_fail(void *_) {
   if (fmw_state.motors != NULL) {
@@ -15,6 +36,103 @@ static void fmw_hook_assert_fail(void *_) {
   }
 }
 
+// ============================================================
+// Firmware initialization
+void fmw_init(const FMW_InitInfo *info) {
+  FMW_ASSERT(info->message_exchange.huart != NULL);
+  FMW_ASSERT(info->message_exchange.hcrc != NULL);
+  FMW_ASSERT(info->message_exchange.handler != NULL);
+  FMW_ASSERT(info->emergency.on_begin != NULL);
+  FMW_ASSERT(info->emergency.on_end != NULL);
+  FMW_ASSERT(info->motors_count >= 0);
+  if (info->motors_count > 0) { FMW_ASSERT(info->motors != NULL); }
+
+  fmw_state.motors = info->motors;
+  fmw_state.motors_count = info->motors_count;
+  fmw_state.huart = info->message_exchange.huart;
+  fmw_state.hcrc = info->message_exchange.hcrc;
+  fmw_state.emergency_mode_grace_period_ms = info->emergency.wait_at_most_ms_before_emergency;
+  fmw_state.callback_message_handler = info->message_exchange.handler;
+  fmw_state.callback_emergency_begin = info->emergency.on_begin;
+  fmw_state.callback_emergency_end = info->emergency.on_end;
+  fmw_state.emergency_timer = info->emergency.timer;
+
+  HAL_StatusTypeDef timer_init_res = HAL_TIM_Base_Start_IT(info->emergency.timer);
+  FMW_ASSERT(timer_init_res == HAL_OK);
+
+  HAL_StatusTypeDef dma_init_res = HAL_UART_Receive_DMA(fmw_state.huart, (uint8_t*)&fmw_state.uart_buffer, sizeof fmw_state.uart_buffer);
+  FMW_ASSERT(dma_init_res == HAL_OK);
+}
+
+void fmw_uart_message_dispatch(void) {
+  fmw_state.emergency_last_message_received_time = HAL_GetTick();
+  fmw_state.callback_message_handler((FMW_Message*)&fmw_state.uart_buffer, fmw_state.hcrc);
+  // NOTE(lb): listen for the next message "recursively".
+  HAL_UART_Receive_DMA(fmw_state.huart, (uint8_t*)&fmw_state.uart_buffer, sizeof fmw_state.uart_buffer);
+}
+
+void fmw_uart_error(void) {
+  // NOTE(lb): i don't know how to determine if the error that cause the jump here
+  //           was during a receive or a send of a message over UART, so i'm just
+  //           going to stop the motors and abort the receive just in case.
+  fmw_motors_stop(fmw_state.motors, fmw_state.motors_count);
+  HAL_UART_AbortReceive(fmw_state.huart);
+
+  FMW_Message response = {0};
+  response.response.result = fmw_result_from_uart_error();
+  fmw_uart_message_send(&response);
+  HAL_UART_Receive_DMA(fmw_state.huart, (uint8_t*)&fmw_state.uart_buffer, sizeof fmw_state.uart_buffer);
+}
+
+void fmw_emergency_begin(void) {
+  if (fmw_state.mode_current == FMW_Mode_Emergency) { return; }
+  if (fmw_state.motors_count > 0) {
+    fmw_state.motors_active_before_emergency = fmw_state.motors[0].active;
+    if (fmw_state.motors[0].active) {
+      fmw_motors_stop(fmw_state.motors, fmw_state.motors_count);
+      fmw_motors_disable(fmw_state.motors, fmw_state.motors_count);
+    }
+  }
+
+  fmw_state.mode_previous = fmw_state.mode_current;
+  fmw_state.mode_current = FMW_Mode_Emergency;
+
+  if (fmw_state.callback_emergency_begin) { fmw_state.callback_emergency_begin(); }
+}
+
+void fmw_emergency_end(void) {
+  if (fmw_state.mode_previous == FMW_Mode_None) { return; }
+  fmw_state.mode_current = fmw_state.mode_previous;
+  fmw_state.mode_previous = FMW_Mode_None;
+  if (fmw_state.motors_count > 0 && fmw_state.motors_active_before_emergency) {
+    fmw_motors_enable(fmw_state.motors, fmw_state.motors_count);
+  }
+  if (fmw_state.callback_emergency_end) { fmw_state.callback_emergency_end(); }
+}
+
+void fmw_emergency_timer_update(void) {
+  if (fmw_state.mode_current != FMW_Mode_Run) { return; }
+  uint32_t time_now = HAL_GetTick();
+  if (time_now - fmw_state.emergency_last_message_received_time > fmw_state.emergency_mode_grace_period_ms) {
+    fmw_emergency_begin();
+  }
+}
+
+FMW_Mode fmw_mode_current(void) {
+  return fmw_state.mode_current;
+}
+
+FMW_Mode fmw_mode_transition(FMW_Mode mode) {
+  FMW_ASSERT(mode > FMW_Mode_None);
+  FMW_ASSERT(mode < FMW_Mode_COUNT);
+  FMW_Mode old = fmw_state.mode_previous;
+  fmw_state.mode_previous = fmw_state.mode_current;
+  fmw_state.mode_current = mode;
+  return old;
+}
+
+// ============================================================
+// Misc
 FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg, int32_t wait_ms) {
   FMW_ASSERT(wait_ms >= 0, .callback = fmw_hook_assert_fail);
   memset(msg, 0, sizeof *msg);
@@ -27,37 +145,35 @@ FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg,
   return FMW_Result_Ok;
 }
 
-HAL_StatusTypeDef fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc, FMW_Message *msg, int32_t wait_ms) {
-  msg->header.crc = HAL_CRC_Calculate(hcrc, (uint32_t*)msg, sizeof *msg);
-  HAL_StatusTypeDef res = HAL_UART_Transmit(huart, (uint8_t*)msg, sizeof *msg, wait_ms);
-  return res;
+void fmw_uart_message_send(FMW_Message *msg) {
+  msg->header.crc = HAL_CRC_Calculate(fmw_state.hcrc, (uint32_t*)msg, sizeof *msg);
+  HAL_StatusTypeDef res = HAL_UART_Transmit(fmw_state.huart, (uint8_t*)msg, sizeof *msg, fmw_state.emergency_mode_grace_period_ms);
+  if (res != HAL_OK) { fmw_emergency_begin(); }
 }
 
-FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart) {
-  FMW_ASSERT(huart->ErrorCode != HAL_UART_ERROR_NONE, .callback = fmw_hook_assert_fail);
-  FMW_Message res = {0};
-  res.header.type = FMW_MessageType_Response;
-  switch (huart->ErrorCode) {
+FMW_Result fmw_result_from_uart_error(void) {
+  FMW_ASSERT(fmw_state.huart->ErrorCode != HAL_UART_ERROR_NONE, .callback = fmw_hook_assert_fail);
+  switch (fmw_state.huart->ErrorCode) {
   case HAL_UART_ERROR_PE: {
-    res.response.result = FMW_Result_Error_UART_Parity;
+    return FMW_Result_Error_UART_Parity;
   } break;
   case HAL_UART_ERROR_FE: {
-    res.response.result = FMW_Result_Error_UART_Frame;
+    return FMW_Result_Error_UART_Frame;
   } break;
   case HAL_UART_ERROR_NE: {
-    res.response.result = FMW_Result_Error_UART_Noise;
+    return FMW_Result_Error_UART_Noise;
   } break;
   case HAL_UART_ERROR_ORE: {
-    res.response.result = FMW_Result_Error_UART_Overrun;
+    return FMW_Result_Error_UART_Overrun;
   } break;
   case HAL_UART_ERROR_RTO: {
-    res.response.result = FMW_Result_Error_UART_ReceiveTimeoutElapsed;
+    return FMW_Result_Error_UART_ReceiveTimeoutElapsed;
   } break;
   default: { // NOTE(lb): unreachable
     FMW_ASSERT(false, .callback = fmw_hook_assert_fail);
   } break;
   }
-  return res;
+  return FMW_Result_Ok;
 }
 
 Vec2Float fmw_setpoint_from_velocities(const FMW_Odometry *odometry, float linear, float angular) {
@@ -228,7 +344,7 @@ void fmw_encoders_update(FMW_Encoder encoders[], int32_t count) {
 
 float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder, float meters_traveled) {
   float deltatime = encoder->current_millis - encoder->previous_millis;
-  FMW_ASSERT(deltatime > 0.f, .callback = fmw_hook_assert_fail);
+  if (deltatime == 0.f) { return 0.f; }
   float linear_velocity = meters_traveled / (deltatime / 1000.f);
   return linear_velocity;
 }

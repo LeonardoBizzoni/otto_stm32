@@ -13,7 +13,6 @@ using namespace std::chrono_literals;
 P3DX_Controller_Node::P3DX_Controller_Node(int32_t serial_fd) :
   rclcpp::Node("P3DX_Controller_Node"),
   serial_fd(serial_fd),
-  stm32_config_mode(false),
   publisher_odometry(this->create_publisher<nav_msgs::msg::Odometry>("odometry", 10)),
   subscriber_velocity(this->create_subscription<geometry_msgs::msg::Twist>("p3dx_command_velocity", 10,
                                                                            std::bind(&P3DX_Controller_Node::callback_subscribe_command_velocity,
@@ -26,6 +25,8 @@ P3DX_Controller_Node::P3DX_Controller_Node(int32_t serial_fd) :
                                                                                      &P3DX_Controller_Node::callback_service_command_config_robot_s)),
   service_config_led(this->create_service<pioneer3dx_controller::srv::ConfigLed>("p3dx_command_config_led",
                                                                                  &P3DX_Controller_Node::callback_service_command_config_led_s)),
+  service_emergency_mode(this->create_service<pioneer3dx_controller::srv::EmergencyMode>("p3dx_command_emergency_mode",
+                                                                                         &P3DX_Controller_Node::callback_service_command_emergency_mode_s)),
   timer_publisher_odometry(this->create_wall_timer(50ms, std::bind(&P3DX_Controller_Node::callback_publish_odometry, this)))
 {
   assert(this->serial_fd != -1);
@@ -35,20 +36,15 @@ P3DX_Controller_Node::P3DX_Controller_Node(int32_t serial_fd) :
 
 void P3DX_Controller_Node::callback_publish_odometry(void)
 {
-  if (this->stm32_config_mode) { return; }
-
   FMW_Message msg_get_status;
   msg_get_status.header.type = FMW_MessageType_Run_GetStatus;
   msg_get_status.header.crc = (uint32_t)-1;
   FMW_Message response = this->stm32_message_send(&msg_get_status);
   assert(response.header.type == FMW_MessageType_Response);
-  this->stm32_message_print(&response);
   if (response.response.result == FMW_Result_Error_Command_NotAvailable) {
-    this->stm32_config_mode = true;
     return;
-  } else {
-    this->stm32_config_mode = false;
   }
+  this->stm32_message_print(&response);
 
   nav_msgs::msg::Odometry output;
   output.header.frame_id = this->get_parameter("frame_id_odometry").as_string();
@@ -67,8 +63,6 @@ void P3DX_Controller_Node::callback_publish_odometry(void)
 
 void P3DX_Controller_Node::callback_subscribe_command_velocity(const geometry_msgs::msg::Twist::SharedPtr cmd)
 {
-  if (this->stm32_config_mode) { return; }
-
   FMW_Message msg;
   ::memset(&msg, 0, sizeof(msg));
   msg.header.type = FMW_MessageType_Run_SetVelocity;
@@ -77,6 +71,7 @@ void P3DX_Controller_Node::callback_subscribe_command_velocity(const geometry_ms
   msg.run_set_velocity.angular = cmd->angular.x;
 
   FMW_Message response_msg = this->stm32_message_send(&msg);
+  this->stm32_message_print(&response_msg);
   assert(response_msg.header.type == FMW_MessageType_Response);
   assert(response_msg.response.result == FMW_Result_Ok);
 }
@@ -111,11 +106,9 @@ void P3DX_Controller_Node::callback_service_command_change_mode_s(const std::sha
     msg.header.crc = (uint32_t)-1;
 
     FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+    p3dx_controller->stm32_message_print(&response_msg);
     assert(response_msg.header.type == FMW_MessageType_Response);
     response->status_response = (uint8_t)response_msg.response.result;
-    if (response_msg.response.result == FMW_Result_Ok) {
-      p3dx_controller->stm32_config_mode = (mode == P3DX_Cmd_ChangeMode_Kind::Config);
-    }
   }
 }
 
@@ -138,6 +131,7 @@ void P3DX_Controller_Node::callback_service_command_config_pid_s(const std::shar
   ::memcpy(msg.config_pid.cross.values, request->cross.data(), sizeof(msg.config_pid.left.values));
 
   FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+  p3dx_controller->stm32_message_print(&response_msg);
   assert(response_msg.header.type == FMW_MessageType_Response);
   response->status_response = (uint8_t)response_msg.response.result;
 }
@@ -164,6 +158,7 @@ void P3DX_Controller_Node::callback_service_command_config_robot_s(const std::sh
   msg.config_robot.ticks_per_revolution_right = request->ticks_per_revolution_right;
 
   FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+  p3dx_controller->stm32_message_print(&response_msg);
   assert(response_msg.header.type == FMW_MessageType_Response);
   response->status_response = (uint8_t)response_msg.response.result;
 }
@@ -187,6 +182,23 @@ void P3DX_Controller_Node::callback_service_command_config_led_s(const std::shar
   msg.config_led.update_period = request->update_period;
 
   FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+  p3dx_controller->stm32_message_print(&response_msg);
+  assert(response_msg.header.type == FMW_MessageType_Response);
+  response->status_response = (uint8_t)response_msg.response.result;
+}
+
+void P3DX_Controller_Node::callback_service_command_emergency_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::EmergencyMode::Request> request,
+                                                                     std::shared_ptr<pioneer3dx_controller::srv::EmergencyMode::Response> response)
+{
+  RCLCPP_INFO(p3dx_controller->get_logger(), "emergency-mode %s", (request->enable ? "entered" : "exit"));
+
+  FMW_Message msg;
+  ::memset(&msg, 0, sizeof(msg));
+  msg.header.type = (request->enable ? FMW_MessageType_Emergency_Begin : FMW_MessageType_Emergency_End);
+  msg.header.crc = (uint32_t)-1;
+
+  FMW_Message response_msg = p3dx_controller->stm32_message_send(&msg);
+  p3dx_controller->stm32_message_print(&response_msg);
   assert(response_msg.header.type == FMW_MessageType_Response);
   response->status_response = (uint8_t)response_msg.response.result;
 }
@@ -204,7 +216,6 @@ FMW_Message P3DX_Controller_Node::stm32_message_send(const FMW_Message *msg)
     assert(bytes_written != -1);
     assert(bytes_written > 0);
     assert(bytes_written == sizeof(FMW_Message));
-    RCLCPP_INFO(this->get_logger(), "message sent to stm32");
     for (uint32_t bytes_read = 0; bytes_read < sizeof(*msg);) {
       ssize_t n = ::read(this->serial_fd, ((uint8_t*)&res) + bytes_read, sizeof(res) - bytes_read);
       assert(n != -1);
@@ -212,7 +223,6 @@ FMW_Message P3DX_Controller_Node::stm32_message_send(const FMW_Message *msg)
     }
   }
   this->serial_mutex.unlock();
-  this->stm32_message_print(&res);
   assert(res.header.type == FMW_MessageType_Response);
   return res;
 }

@@ -11,6 +11,7 @@
 #include <pioneer3dx_controller/srv/config_pid.hpp>
 #include <pioneer3dx_controller/srv/config_led.hpp>
 #include <pioneer3dx_controller/srv/config_robot.hpp>
+#include <pioneer3dx_controller/srv/emergency_mode.hpp>
 
 extern "C" {
 #include "stm32_messages.h"
@@ -22,12 +23,12 @@ enum P3DX_Cmd_ChangeMode_Kind: uint8_t {
   None = 0,
   Config = 1,
   Run = 2,
-  COUNT = 3,
+  Emergency = 3,
+  COUNT = 4,
 };
 
 struct P3DX_Controller_Node: public rclcpp::Node {
   const int32_t serial_fd;
-  bool          stm32_config_mode;
   std::mutex    serial_mutex;
 
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr                 publisher_odometry;
@@ -36,6 +37,7 @@ struct P3DX_Controller_Node: public rclcpp::Node {
   rclcpp::Service<pioneer3dx_controller::srv::ConfigPid>::SharedPtr     service_config_pid;
   rclcpp::Service<pioneer3dx_controller::srv::ConfigRobot>::SharedPtr   service_config_robot;
   rclcpp::Service<pioneer3dx_controller::srv::ConfigLed>::SharedPtr     service_config_led;
+  rclcpp::Service<pioneer3dx_controller::srv::EmergencyMode>::SharedPtr service_emergency_mode;
   rclcpp::TimerBase::SharedPtr                                          timer_publisher_odometry;
 
   P3DX_Controller_Node(int32_t serial_fd);
@@ -50,6 +52,8 @@ struct P3DX_Controller_Node: public rclcpp::Node {
                                                         std::shared_ptr<pioneer3dx_controller::srv::ConfigRobot::Response> response);
   static void   callback_service_command_config_led_s(const std::shared_ptr<pioneer3dx_controller::srv::ConfigLed::Request> request,
                                                       std::shared_ptr<pioneer3dx_controller::srv::ConfigLed::Response> response);
+  static void   callback_service_command_emergency_mode_s(const std::shared_ptr<pioneer3dx_controller::srv::EmergencyMode::Request> request,
+                                                          std::shared_ptr<pioneer3dx_controller::srv::EmergencyMode::Response> response);
 
   FMW_Message   stm32_message_send(const FMW_Message *msg);
   void          stm32_message_print(const FMW_Message *msg);

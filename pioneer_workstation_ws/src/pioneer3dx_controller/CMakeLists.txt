@@ -17,10 +17,12 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "messages/ConfigLed.msg"
   "messages/ConfigPid.msg"
   "messages/ConfigRobot.msg"
+  "messages/EmergencyMode.msg"
   "services/ChangeMode.srv"
   "services/ConfigLed.srv"
   "services/ConfigPid.srv"
   "services/ConfigRobot.srv"
+  "services/EmergencyMode.srv"
   DEPENDENCIES service_msgs
 )
 

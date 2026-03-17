@@ -32,8 +32,10 @@
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc)
-  __attribute__((nonnull));
+void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) __attribute__((nonnull));
+
+void emergency_mode_begin(void);
+void emergency_mode_end(void);
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
@@ -55,6 +57,7 @@ TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim4;
 TIM_HandleTypeDef htim6;
+TIM_HandleTypeDef htim7;
 
 UART_HandleTypeDef huart3;
 DMA_HandleTypeDef hdma_usart3_rx;
@@ -160,9 +163,6 @@ static uint32_t led_update_period = 200;
 
 static volatile int32_t ticks_left  = 0;
 static volatile int32_t ticks_right = 0;
-static volatile FMW_Message uart_message_buffer = {0};
-static volatile uint32_t time_last_motors = 0;
-static volatile FMW_Mode current_mode = FMW_Mode_Config;
 
 /* USER CODE END PV */
 
@@ -178,6 +178,7 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM6_Init(void);
 static void MX_CRC_Init(void);
+static void MX_TIM7_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -223,6 +224,7 @@ int main(void)
   MX_TIM3_Init();
   MX_TIM6_Init();
   MX_CRC_Init();
+  MX_TIM7_Init();
   /* USER CODE BEGIN 2 */
 
   start();
@@ -643,6 +645,44 @@ static void MX_TIM6_Init(void)
 }
 
 /**
+  * @brief TIM7 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM7_Init(void)
+{
+
+  /* USER CODE BEGIN TIM7_Init 0 */
+
+  /* USER CODE END TIM7_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM7_Init 1 */
+
+  /* USER CODE END TIM7_Init 1 */
+  htim7.Instance = TIM7;
+  htim7.Init.Prescaler = 10799;
+  htim7.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim7.Init.Period = 9999;
+  htim7.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim7) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim7, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM7_Init 2 */
+
+  /* USER CODE END TIM7_Init 2 */
+
+}
+
+/**
   * @brief USART3 Initialization Function
   * @param None
   * @retval None
@@ -729,7 +769,7 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : USER_Btn_Pin */
   GPIO_InitStruct.Pin = USER_Btn_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING_FALLING;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(USER_Btn_GPIO_Port, &GPIO_InitStruct);
 
@@ -796,11 +836,25 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 void start(void) {
-  // Enables UART RX interrupt
-  HAL_UART_Receive_DMA(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
+  FMW_InitInfo fmw_info = {
+    .motors = motors.values,
+    .motors_count = ARRLENGTH(motors.values),
+    .emergency = {
+      .timer = &htim7,
+      .on_begin = emergency_mode_begin,
+      .on_end = emergency_mode_end,
+      .wait_at_most_ms_before_emergency = 2000,
+    },
+    .message_exchange = {
+      .huart = UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL,
+      .hcrc = &hcrc,
+      .handler = message_handler,
+    },
+  };
+  fmw_init(&fmw_info);
 
   for (;;) {
-    switch (current_mode) {
+    switch (fmw_mode_current()) {
     case FMW_Mode_Config: {
     } break;
     case FMW_Mode_Run: {
@@ -829,19 +883,33 @@ Mat3Float mat3float_multiply(Mat3Float lhs, Mat3Float rhs) {
   return output;
 }
 
-FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
+void emergency_mode_begin(void) {
+  HAL_GPIO_TogglePin(GPIOB, LD1_Pin | LD2_Pin | LD3_Pin);
+  fmw_encoder_count_reset(&encoders.left);
+  fmw_encoder_count_reset(&encoders.right);
+}
+
+void emergency_mode_end(void) {
+  HAL_GPIO_TogglePin(GPIOB, LD1_Pin | LD2_Pin | LD3_Pin);
+}
+
+void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   // NOTE(lb): the `msg->header.crc != -1` checks are just because i haven't
   //           implemented CRC into the program that sends these messages.
   //           i also don't know if the code to calculate CRC is correct (probably isn't).
+
+  FMW_Result result = FMW_Result_Ok;
   if (msg->header.crc != -1) {
     uint32_t crc_received = msg->header.crc;
     msg->header.crc = 0;
     uint32_t crc_computed = HAL_CRC_Calculate(hcrc, (uint32_t*)msg, sizeof *msg);
-    if (!(crc_computed == crc_received)) { return FMW_Result_Error_UART_Crc; }
+    if (crc_computed != crc_received) {
+      result = FMW_Result_Error_UART_Crc;
+      goto msg_contains_error;
+    }
   }
 
-  FMW_Result result = FMW_Result_Ok;
-  switch (current_mode) {
+  switch (fmw_mode_current()) {
   case FMW_Mode_Config: {
     switch (msg->header.type) {
     case FMW_MessageType_ModeChange_Run: {
@@ -858,7 +926,7 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       HAL_StatusTypeDef timer_status = HAL_TIM_Base_Start_IT(&htim6);
       FMW_ASSERT(timer_status == HAL_OK);
 
-      current_mode = FMW_Mode_Run;
+      fmw_mode_transition(FMW_Mode_Run);
     } break;
     case FMW_MessageType_Config_Robot: {
       if (!(msg->config_robot.baseline > 0.f)) {
@@ -898,6 +966,10 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       pled.voltage_hysteresis = msg->config_led.voltage_hysteresis;
       led_update_period = msg->config_led.update_period;
     } break;
+    case FMW_MessageType_Emergency_Begin: {
+      fmw_emergency_begin();
+    } break;
+    case FMW_MessageType_Emergency_End:
     case FMW_MessageType_ModeChange_Config:
     case FMW_MessageType_Run_GetStatus:
     case FMW_MessageType_Run_SetVelocity: {
@@ -943,9 +1015,8 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       msg.response.orientation_y = odometry.orientation.y;
       msg.response.velocity_linear = (odometry.velocity_linear.left + odometry.velocity_linear.right) / 2.f;
       msg.response.velocity_angular = odometry.velocity_angular;
-      msg.header.crc = HAL_CRC_Calculate(hcrc, (uint32_t*)&msg, sizeof msg);
-      (void)HAL_UART_Transmit(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&msg, sizeof msg, HAL_MAX_DELAY);
-      return FMW_Result_Ok;
+      fmw_uart_message_send(&msg);
+      return;
       // NOTE(lb): GetStatus&SetVelocity have to respond with the same special message format.
       //           so they don't continue down to `msg_contains_error`.
     } break;
@@ -961,8 +1032,12 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       HAL_StatusTypeDef timer_status = HAL_TIM_Base_Stop_IT(&htim6);
       FMW_ASSERT(timer_status == HAL_OK);
 
-      current_mode = FMW_Mode_Config;
+      fmw_mode_transition(FMW_Mode_Config);
     } break;
+    case FMW_MessageType_Emergency_Begin: {
+      fmw_emergency_begin();
+    } break;
+    case FMW_MessageType_Emergency_End:
     case FMW_MessageType_ModeChange_Run:
     case FMW_MessageType_Config_Robot:
     case FMW_MessageType_Config_PID:
@@ -976,24 +1051,31 @@ FMW_Result message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
     } break;
     }
   } break;
+  case FMW_Mode_Emergency: {
+    switch (msg->header.type) {
+    case FMW_MessageType_Emergency_End: {
+      fmw_emergency_end();
+    } break;
+    default: {
+      result = FMW_Result_Error_Command_NotAvailable;
+    } break;
+    }
+  } break;
   }
 
   // NOTE(lb): control flow naturally converges here.
   //           the symbol is used to jump here directly in case of error.
  msg_contains_error:;
-  FMW_Message response = {0};
-  response.header.type = FMW_MessageType_Response;
-  response.response.result = result;
-  HAL_StatusTypeDef send_res = fmw_message_uart_send(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, hcrc, &response, 1);
-  FMW_ASSERT(send_res == HAL_OK);
-  return result;
+  FMW_Message msg_response = {0};
+  msg_response.header.type = FMW_MessageType_Response;
+  msg_response.response.result = result;
+  fmw_uart_message_send(&msg_response);
 }
 
-// TIMER 100Hz PID control
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
-  if (htim != &htim6) { return; }
-
-  { // PID control
+  if (htim == &htim7) { // TIMER 1Hz no message exchange check
+    fmw_emergency_timer_update();
+  } else if (htim == &htim6) { // TIMER 100Hz PID control
     fmw_encoders_update(encoders.values, ARRLENGTH(encoders.values));
     ticks_left += encoders.left.ticks;
     ticks_right += encoders.right.ticks;
@@ -1022,42 +1104,42 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 }
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-  if (huart != UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL) { return; }
-  (void)message_handler((FMW_Message*)&uart_message_buffer, &hcrc);
-
-  // NOTE(lb): listen for the next message "recursively".
-  HAL_UART_Receive_DMA(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
+  if (huart == UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL) {
+    fmw_uart_message_dispatch();
+    return;
+  }
 }
 
 void HAL_UART_ErrorCallback(UART_HandleTypeDef *huart) {
-  if (huart != UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL) { return; }
-
-  // NOTE(lb): i don't know how to determine if the error that cause the jump here
-  //           was during a receive or a send of a message over UART, so i'm just
-  //           going to stop the motors and abort the receive just in case.
-  fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
-  HAL_UART_AbortReceive(huart);
-
-  FMW_Message response = fmw_message_from_uart_error(huart);
-  retry:;
-  HAL_StatusTypeDef res = fmw_message_uart_send(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, &hcrc, &response, HAL_MAX_DELAY);
-  if (res != HAL_OK) {
-    // NOTE(lb): keep trying to send the error message even on failure until it succeeds
-    //           while also being extra annoying.
-    fmw_buzzers_set(&buzzer, 1, true);
-    goto retry;
+  if (huart == UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL) {
+    fmw_uart_error();
+    return;
   }
-  fmw_buzzers_set(&buzzer, 1, false);
-
-  // NOTE(lb): go back to normal message receive after the error has been notified
-  HAL_UART_Receive_DMA(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, (uint8_t*)&uart_message_buffer, sizeof uart_message_buffer);
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   uint32_t time_now = HAL_GetTick();
 
   switch (GPIO_Pin) {
+  case USER_Btn_Pin: {
+    static uint32_t time_btn_press_start = 0;
+    static uint32_t time_last_emergency = 0;
+    if (time_now - time_last_emergency <= FMW_DEBOUNCE_DELAY) { return; }
+    time_last_emergency = time_now;
+    GPIO_PinState btn_state = HAL_GPIO_ReadPin(USER_Btn_GPIO_Port, USER_Btn_Pin);
+    if (btn_state == GPIO_PIN_SET) {
+      time_btn_press_start = time_now;
+    } else {
+      uint32_t btn_held_duration = time_now - time_btn_press_start;
+      if (btn_held_duration >= FMW_EMERGENCY_MODE_EXIT_BUTTON_HOLD_DURATION_MS) {
+        fmw_emergency_end();
+      } else  {
+        fmw_emergency_begin();
+      }
+    }
+  } break;
   case motors_btn_Pin: {
+    static uint32_t time_last_motors = 0;
     if (time_now - time_last_motors > FMW_DEBOUNCE_DELAY) {
       time_last_motors = time_now;
       if (motors.left.active && motors.right.active) {
@@ -1080,12 +1162,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     response.header.type = FMW_MessageType_Response;
     response.response.result = FMW_Result_Error_FaultPinTriggered;
 
-    retry:;
-    HAL_StatusTypeDef res = fmw_message_uart_send(UART_HANDLE_PTR_USED_FOR_MESSAGE_EXCHANGE_PROTOCOL, &hcrc, &response, HAL_MAX_DELAY);
-    if (res != HAL_OK) { // NOTE(lb): send help
-      fmw_buzzers_set(&buzzer, 1, true);
-      goto retry;
-    }
+    fmw_uart_message_send(&response);
 
     HAL_TIM_Base_Stop_IT(&htim6);
   } break;

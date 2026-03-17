@@ -3,10 +3,11 @@
 
 typedef uint8_t FMW_Mode;
 enum {
-  FMW_Mode_None = 0,
-  FMW_Mode_Config = 1,
-  FMW_Mode_Run = 2,
-  FMW_Mode_COUNT = 3,
+  FMW_Mode_None         = 0,
+  FMW_Mode_Config       = 1,
+  FMW_Mode_Run          = 2,
+  FMW_Mode_Emergency    = 3,
+  FMW_Mode_COUNT        = 4,
 };
 
 typedef struct FMW_Encoder {
@@ -79,6 +80,39 @@ typedef struct FMW_Hook {
   void *args;
 } FMW_Hook;
 
+typedef struct FMW_InitInfo {
+  struct {
+    UART_HandleTypeDef *huart;
+    CRC_HandleTypeDef *hcrc;
+    void (*handler)(FMW_Message *msg, CRC_HandleTypeDef *hcrc);
+  } message_exchange;
+
+  struct {
+    TIM_HandleTypeDef *timer;
+    void (*on_begin)(void);
+    void (*on_end)(void);
+    uint32_t wait_at_most_ms_before_emergency;
+  } emergency;
+
+  FMW_Motor *motors;
+  int32_t motors_count;
+} FMW_InitInfo;
+
+void fmw_init(const FMW_InitInfo *info) __attribute__((nonnull));
+
+void fmw_uart_message_dispatch(void);
+void fmw_uart_message_send(FMW_Message *msg) __attribute__((nonnull));
+void fmw_uart_error(void);
+
+void fmw_emergency_begin(void);
+void fmw_emergency_end(void);
+void fmw_emergency_timer_update(void);
+
+FMW_Mode fmw_mode_current(void);
+FMW_Mode fmw_mode_transition(FMW_Mode mode);
+
+FMW_Result fmw_result_from_uart_error(void) __attribute__((nonnull, warn_unused_result));
+
 void fmw_motors_init(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
 void fmw_motors_deinit(FMW_Motor motors[], int32_t count)       __attribute__((nonnull));
 void fmw_motors_stop(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
@@ -103,15 +137,11 @@ void fmw_led_update(FMW_Led *led)       __attribute__((nonnull));
 
 void fmw_buzzers_set(FMW_Buzzer buzzer[], int32_t count, bool on) __attribute__((nonnull));
 
-FMW_Result fmw_message_uart_receive(UART_HandleTypeDef *huart, FMW_Message *msg, int32_t wait_ms)       __attribute__((warn_unused_result, nonnull));
-HAL_StatusTypeDef fmw_message_uart_send(UART_HandleTypeDef *huart, CRC_HandleTypeDef *hcrc,
-                                        FMW_Message *msg, int32_t wait_ms)                              __attribute__((nonnull, warn_unused_result));
-FMW_Message fmw_message_from_uart_error(const UART_HandleTypeDef *huart)                                __attribute__((nonnull, warn_unused_result));
-
 Vec2Float fmw_setpoint_from_velocities(const FMW_Odometry *odometry, float linear, float angular) __attribute__((nonnull));
 
 #define FMW_LED_UPDATE_PERIOD 200
 #define FMW_DEBOUNCE_DELAY 200
+#define FMW_EMERGENCY_MODE_EXIT_BUTTON_HOLD_DURATION_MS 2000
 
 #define FMW_V_REF 3.3f
 #define FMW_ADC_RESOLUTION 4095.0f

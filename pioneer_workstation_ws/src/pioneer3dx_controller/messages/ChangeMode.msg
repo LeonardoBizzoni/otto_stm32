@@ -1,1 +1,1 @@
-byte mode
+uint8 mode

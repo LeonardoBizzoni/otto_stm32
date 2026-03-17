@@ -25,7 +25,9 @@ typedef union {
   X(FMW_MessageType_Config_LED, 6)              \
   X(FMW_MessageType_Run_GetStatus, 7)           \
   X(FMW_MessageType_Run_SetVelocity, 8)         \
-  X(FMW_MessageType_COUNT, 9)
+  X(FMW_MessageType_Emergency_Begin, 9)         \
+  X(FMW_MessageType_Emergency_End, 10)          \
+  X(FMW_MessageType_COUNT, 11)
 
 // NOTE(lb): Here i want to take all of the variants that are generated from the macro
 //           expension of FMW_MESSAGE_TYPE_VARIANTS and use them to populate the enum definition.
