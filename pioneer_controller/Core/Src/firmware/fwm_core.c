@@ -275,6 +275,7 @@ FMW_Result fmw_encoders_update(void) {
 
 FMW_Result fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder, float meters_traveled, float *linear_velocity) {
   if (encoder < fmw_state.encoders || encoder >= (fmw_state.encoders + fmw_state.encoders_count)) {
+    *linear_velocity = 0.f;
     return FMW_Result_Error_InvalidArguments;
   }
   float deltatime = encoder->current_millis - encoder->previous_millis;

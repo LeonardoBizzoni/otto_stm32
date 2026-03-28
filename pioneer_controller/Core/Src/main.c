@@ -847,6 +847,8 @@ void start(void) {
   FMW_InitInfo fmw_info = {
     .motors = motors.values,
     .motors_count = ARRLENGTH(motors.values),
+    .encoders = encoders.values,
+    .encoders_count = ARRLENGTH(encoders.values),
     .emergency = {
       .timer = &htim7,
       .on_begin = emergency_mode_begin,
@@ -921,9 +923,9 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   case FMW_Mode_Config: {
     switch (msg->header.type) {
     case FMW_MessageType_ModeChange_Run: {
-      fmw_encoders_init();
-      fmw_motors_init();
-      fmw_led_init(&pled);
+      result = fmw_encoders_init(); if (result != FMW_Result_Ok) { goto msg_contains_error; }
+      result = fmw_motors_init();   if (result != FMW_Result_Ok) { goto msg_contains_error; }
+      result = fmw_led_init(&pled); if (result != FMW_Result_Ok) { goto msg_contains_error; }
 
       // Right and left motors have the same parameters
       pid_max = (int32_t)htim4.Instance->ARR;
@@ -934,7 +936,7 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       HAL_StatusTypeDef timer_status = HAL_TIM_Base_Start_IT(&htim6);
       FMW_ASSERT(timer_status == HAL_OK);
 
-      fmw_mode_transition(FMW_Mode_Run);
+      FMW_ASSERT(fmw_mode_transition(FMW_Mode_Run) == FMW_Result_Ok);
     } break;
     case FMW_MessageType_Config_Robot: {
       if (!(msg->config_robot.baseline > 0.f)) {
@@ -1004,8 +1006,8 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
 
       int32_t ticks_measured_left = 0;
       int32_t ticks_measured_right = 0;
-      fmw_encoder_count_get(&encoders.left, &ticks_measured_left);
-      fmw_encoder_count_get(&encoders.right, &ticks_measured_right);
+      result = fmw_encoder_count_get(&encoders.left, &ticks_measured_left);   if (result != FMW_Result_Ok) { goto msg_contains_error; }
+      result = fmw_encoder_count_get(&encoders.right, &ticks_measured_right); if (result != FMW_Result_Ok) { goto msg_contains_error; }
 
       int32_t current_ticks_left = ticks_left + ticks_measured_left;
       int32_t current_ticks_right = ticks_right + ticks_measured_right;
@@ -1035,17 +1037,17 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
     } break;
     case FMW_MessageType_ModeChange_Config: {
       fmw_motors_stop();
-      fmw_encoder_count_reset(&encoders.left);
-      fmw_encoder_count_reset(&encoders.right);
+      result = fmw_encoder_count_reset(&encoders.left);  if (result != FMW_Result_Ok) { goto msg_contains_error; }
+      result = fmw_encoder_count_reset(&encoders.right); if (result != FMW_Result_Ok) { goto msg_contains_error; }
 
-      fmw_encoders_deinit();
-      fmw_motors_deinit();
-      fmw_led_deinit(&pled);
+      result = fmw_encoders_deinit(); if (result != FMW_Result_Ok) { goto msg_contains_error; }
+      result = fmw_motors_deinit();   if (result != FMW_Result_Ok) { goto msg_contains_error; }
+      result = fmw_led_deinit(&pled); if (result != FMW_Result_Ok) { goto msg_contains_error; }
 
       HAL_StatusTypeDef timer_status = HAL_TIM_Base_Stop_IT(&htim6);
       FMW_ASSERT(timer_status == HAL_OK);
 
-      fmw_mode_transition(FMW_Mode_Config);
+      FMW_ASSERT(fmw_mode_transition(FMW_Mode_Config) == FMW_Result_Ok);
     } break;
     case FMW_MessageType_Emergency_Begin: {
       fmw_emergency_begin();
