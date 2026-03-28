@@ -75,11 +75,6 @@ typedef struct FMW_Buzzer {
   uint32_t timer_channel;
 } FMW_Buzzer;
 
-typedef struct FMW_Hook {
-  void (*callback)(void *args);
-  void *args;
-} FMW_Hook;
-
 typedef struct FMW_InitInfo {
   struct {
     UART_HandleTypeDef *huart;
@@ -95,10 +90,12 @@ typedef struct FMW_InitInfo {
   } emergency;
 
   FMW_Motor *motors;
+  FMW_Encoder *encoders;
   int32_t motors_count;
+  int32_t encoders_count;
 } FMW_InitInfo;
 
-void fmw_init(const FMW_InitInfo *info) __attribute__((nonnull));
+FMW_Result fmw_init(const FMW_InitInfo *info) __attribute__((nonnull, warn_unused_result));
 
 void fmw_uart_message_dispatch(void);
 void fmw_uart_message_send(FMW_Message *msg) __attribute__((nonnull));
@@ -108,36 +105,34 @@ void fmw_emergency_begin(void);
 void fmw_emergency_end(void);
 void fmw_emergency_timer_update(void);
 
-FMW_Mode fmw_mode_current(void);
-FMW_Mode fmw_mode_transition(FMW_Mode mode);
+FMW_Mode fmw_mode_current(void)                 __attribute__((warn_unused_result));
+FMW_Mode fmw_mode_transition(FMW_Mode mode)     __attribute__((warn_unused_result));
 
-FMW_Result fmw_result_from_uart_error(void) __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_result_from_uart_error(void) __attribute__((warn_unused_result));
 
-void fmw_motors_init(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
-void fmw_motors_deinit(FMW_Motor motors[], int32_t count)       __attribute__((nonnull));
-void fmw_motors_stop(FMW_Motor motors[], int32_t count)         __attribute__((nonnull));
-void fmw_motors_enable(FMW_Motor motors[], int32_t count)       __attribute__((nonnull));
-void fmw_motors_disable(FMW_Motor motors[], int32_t count)      __attribute__((nonnull));
-void fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle)  __attribute__((nonnull));
+FMW_Result fmw_motors_init(void)                                        __attribute__((warn_unused_result));
+FMW_Result fmw_motors_deinit(void)                                      __attribute__((warn_unused_result));
+FMW_Result fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle)    __attribute__((nonnull, warn_unused_result));
+void fmw_motors_stop(void);
 
-void fmw_encoders_init(FMW_Encoder encoders[], int32_t count)                                   __attribute__((nonnull));
-void fmw_encoders_deinit(FMW_Encoder encoders[], int32_t count)                                 __attribute__((nonnull));
-void fmw_encoders_update(FMW_Encoder encoders[], int32_t count)                                 __attribute__((nonnull));
-float fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder, float meters_traveled)        __attribute__((warn_unused_result, nonnull));
-void fmw_encoder_count_reset(FMW_Encoder *encoder)                                              __attribute__((nonnull));
-int32_t fmw_encoder_count_get(const FMW_Encoder *encoder)                                       __attribute__((warn_unused_result, nonnull));
+FMW_Result fmw_encoders_init(void)                                              __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoders_deinit(void)                                            __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoders_update(void)                                            __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder,
+                                           float meters_traveled,
+                                           float *linear_velocity)              __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoder_count_reset(FMW_Encoder *encoder)                        __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoder_count_get(const FMW_Encoder *encoder, int32_t *ticks)    __attribute__((nonnull, warn_unused_result));
 
 void fmw_odometry_pose_update(FMW_Odometry *odometry, float meters_traveled_left, float meters_traveled_right) __attribute__((nonnull));
 
-int32_t fmw_pid_update(FMW_PidController *pid, float velocity) __attribute__((warn_unused_result, nonnull));
+int32_t fmw_pid_update(FMW_PidController *pid, float velocity) __attribute__((nonnull));
 
-void fmw_led_init(FMW_Led *led)         __attribute__((nonnull));
-void fmw_led_deinit(FMW_Led *led)       __attribute__((nonnull));
-void fmw_led_update(FMW_Led *led)       __attribute__((nonnull));
+FMW_Result fmw_led_init(FMW_Led *led)   __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_led_deinit(FMW_Led *led) __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_led_update(FMW_Led *led) __attribute__((nonnull, warn_unused_result));
 
-void fmw_buzzers_set(FMW_Buzzer buzzer[], int32_t count, bool on) __attribute__((nonnull));
-
-Vec2Float fmw_setpoint_from_velocities(const FMW_Odometry *odometry, float linear, float angular) __attribute__((nonnull));
+FMW_Result fmw_buzzers_set(FMW_Buzzer buzzer[], int32_t count, bool on) __attribute__((nonnull, warn_unused_result));
 
 #define FMW_LED_UPDATE_PERIOD 200
 #define FMW_DEBOUNCE_DELAY 200
@@ -147,24 +142,9 @@ Vec2Float fmw_setpoint_from_velocities(const FMW_Odometry *odometry, float linea
 #define FMW_ADC_RESOLUTION 4095.0f
 #define FMW_VIN_SCALE_FACTOR 3.733f
 
-#define FMW_METERS_FROM_TICKS(Ticks, WheelCircumference, TicksPerRevolution) \
-  ((Ticks * WheelCircumference) / TicksPerRevolution)
+#define FMW_METERS_FROM_TICKS(Ticks, WheelCircumference, TicksPerRevolution) (((Ticks) * (WheelCircumference)) / (TicksPerRevolution))
 
-// NOTE(lb): The variadic arguments are the fields of FMW_Hook, so you can just type
-//           `.callback = your_function_pointer, .args = your_pointer_to_args`.
-//           Calling this macro with the condition argument is GCC extension.
-//           I don't use `assert` because i never figured out how to make it trigger
-//           a debug breakpoint inside the STM32 ide debugger (and also because having a
-//           on-failure callback is handy).
-#define FMW_ASSERT(Cond, ...)           \
-  do {                                  \
-    FMW_Hook hook = { __VA_ARGS__ };    \
-    if (!(Cond)) {                      \
-      if (hook.callback) {              \
-        hook.callback(hook.args);       \
-      }                                 \
-      __builtin_trap();                 \
-    }                                   \
-  } while (0)
+// NOTE(lb): I don't use `assert` because i never figured out how to make it trigger a debug breakpoint inside the STM32 ide debugger.
+#define FMW_ASSERT(Cond) do { if (!(Cond)) { __builtin_trap(); } } while (0)
 
 #endif

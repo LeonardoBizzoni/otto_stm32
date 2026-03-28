@@ -34,6 +34,14 @@
 /* USER CODE BEGIN PTD */
 void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) __attribute__((nonnull));
 
+static __attribute__((always_inline)) inline Vec2Float setpoint_from_velocities(float baseline, float linear, float angular) {
+  Vec2Float res = {
+    .left = linear - (baseline * angular) / 2.f,
+    .right = linear + (baseline * angular) / 2.f,
+  };
+  return res;
+}
+
 void emergency_mode_begin(void);
 void emergency_mode_end(void);
 /* USER CODE END PTD */
@@ -851,7 +859,7 @@ void start(void) {
       .handler = message_handler,
     },
   };
-  fmw_init(&fmw_info);
+  FMW_ASSERT(fmw_init(&fmw_info) == FMW_Result_Ok);
 
   for (;;) {
     switch (fmw_mode_current()) {
@@ -862,7 +870,7 @@ void start(void) {
       uint32_t time_now = HAL_GetTick();
       if (time_now - time_last_led_update >= led_update_period) {
         time_last_led_update = time_now;
-        fmw_led_update(&pled);
+        FMW_ASSERT(fmw_led_update(&pled) == FMW_Result_Ok);
       }
     } break;
     }
@@ -913,8 +921,8 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   case FMW_Mode_Config: {
     switch (msg->header.type) {
     case FMW_MessageType_ModeChange_Run: {
-      fmw_encoders_init(encoders.values, ARRLENGTH(encoders.values));
-      fmw_motors_init(motors.values, ARRLENGTH(motors.values));
+      fmw_encoders_init();
+      fmw_motors_init();
       fmw_led_init(&pled);
 
       // Right and left motors have the same parameters
@@ -985,7 +993,7 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
   case FMW_Mode_Run: {
     switch (msg->header.type) {
     case FMW_MessageType_Run_SetVelocity: {
-      Vec2Float setpoint = fmw_setpoint_from_velocities(&odometry, msg->run_set_velocity.linear, msg->run_set_velocity.angular);
+      Vec2Float setpoint = setpoint_from_velocities(odometry.baseline, msg->run_set_velocity.linear, msg->run_set_velocity.angular);
       pid_left.setpoint  = setpoint.left;
       pid_right.setpoint = setpoint.right;
       pid_cross.setpoint = setpoint.left - setpoint.right;
@@ -994,8 +1002,13 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       // NOTE(lb): SetVelocity continues here as well because the previous case doesn't end with a `break`.
       //           order matters.
 
-      int32_t current_ticks_left = ticks_left + fmw_encoder_count_get(&encoders.left);
-      int32_t current_ticks_right = ticks_right + fmw_encoder_count_get(&encoders.right);
+      int32_t ticks_measured_left = 0;
+      int32_t ticks_measured_right = 0;
+      fmw_encoder_count_get(&encoders.left, &ticks_measured_left);
+      fmw_encoder_count_get(&encoders.right, &ticks_measured_right);
+
+      int32_t current_ticks_left = ticks_left + ticks_measured_left;
+      int32_t current_ticks_right = ticks_right + ticks_measured_right;
       ticks_left = ticks_right = 0;
 
       static float time_millis_previous = 0.f;
@@ -1021,12 +1034,12 @@ void message_handler(FMW_Message *msg, CRC_HandleTypeDef *hcrc) {
       //           so they don't continue down to `msg_contains_error`.
     } break;
     case FMW_MessageType_ModeChange_Config: {
-      fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
+      fmw_motors_stop();
       fmw_encoder_count_reset(&encoders.left);
       fmw_encoder_count_reset(&encoders.right);
 
-      fmw_encoders_deinit(encoders.values, ARRLENGTH(encoders.values));
-      fmw_motors_deinit(motors.values, ARRLENGTH(motors.values));
+      fmw_encoders_deinit();
+      fmw_motors_deinit();
       fmw_led_deinit(&pled);
 
       HAL_StatusTypeDef timer_status = HAL_TIM_Base_Stop_IT(&htim6);
@@ -1076,7 +1089,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
   if (htim == &htim7) { // TIMER 1Hz no message exchange check
     fmw_emergency_timer_update();
   } else if (htim == &htim6) { // TIMER 100Hz PID control
-    fmw_encoders_update(encoders.values, ARRLENGTH(encoders.values));
+    fmw_encoders_update();
     ticks_left += encoders.left.ticks;
     ticks_right += encoders.right.ticks;
 
@@ -1085,8 +1098,11 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim) {
 
     fmw_odometry_pose_update(&odometry, meters_traveled_left, meters_traveled_right);
 
-    float velocity_left = fmw_encoder_get_linear_velocity(&encoders.left, meters_traveled_left);
-    float velocity_right = fmw_encoder_get_linear_velocity(&encoders.right, meters_traveled_right);
+    float velocity_left = 0.f;
+    float velocity_right = 0.f;
+    fmw_encoder_get_linear_velocity(&encoders.left, meters_traveled_left, &velocity_left);
+    fmw_encoder_get_linear_velocity(&encoders.right, meters_traveled_right, &velocity_right);
+
     odometry.velocity_linear.left = velocity_left;
     odometry.velocity_linear.right = velocity_right;
     odometry.velocity_angular = (velocity_right - velocity_left) / odometry.baseline;
@@ -1143,13 +1159,13 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
     if (time_now - time_last_motors > FMW_DEBOUNCE_DELAY) {
       time_last_motors = time_now;
       if (motors.left.active && motors.right.active) {
-        fmw_motors_disable(motors.values, ARRLENGTH(motors.values));
+        fmw_motors_deinit();
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_RESET);
         fmw_buzzers_set(&buzzer, 1, false);
       } else {
         FMW_ASSERT(!motors.left.active);
         FMW_ASSERT(!motors.right.active);
-        fmw_motors_enable(motors.values, ARRLENGTH(motors.values));
+        fmw_motors_init();
         HAL_GPIO_WritePin(SLED_GPIO_Port, SLED_Pin, GPIO_PIN_SET);
         fmw_buzzers_set(&buzzer, 1, false);
       }
@@ -1157,7 +1173,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin) {
   } break;
   case fault1_Pin:
   case fault2_Pin: {
-    fmw_motors_stop(motors.values, ARRLENGTH(motors.values));
+    fmw_motors_stop();
     FMW_Message response = {0};
     response.header.type = FMW_MessageType_Response;
     response.response.result = FMW_Result_Error_FaultPinTriggered;

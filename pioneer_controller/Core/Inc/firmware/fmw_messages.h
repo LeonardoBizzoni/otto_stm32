@@ -48,27 +48,28 @@ enum {
 #define FMW_RESULT_VARIANTS()                                                   \
   X(FMW_Result_Ok, 0)                                                           \
   X(FMW_Result_Error_InvalidArguments, 1)                                       \
-  X(FMW_Result_Error_FaultPinTriggered, 2)                                      \
-  X(FMW_Result_Error_UART_Crc, 3)                                               \
-  X(FMW_Result_Error_UART_NegativeTimeout, 4)                                   \
-  X(FMW_Result_Error_UART_ReceiveTimeoutElapsed, 5)                             \
-  X(FMW_Result_Error_UART_Parity, 6)                                            \
-  X(FMW_Result_Error_UART_Frame, 7)                                             \
-  X(FMW_Result_Error_UART_Noise, 8)                                             \
-  X(FMW_Result_Error_UART_Overrun, 9)                                           \
-  X(FMW_Result_Error_Encoder_InvalidTimer, 10)                                  \
-  X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution, 11)                 \
-  X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference, 12)                 \
-  X(FMW_Result_Error_Encoder_GetTick, 13)                                       \
-  X(FMW_Result_Error_Buzzer_Timer, 14)                                          \
-  X(FMW_Result_Error_MessageHandler_InvalidState, 15)                           \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveBaseline, 16)             \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveWheelCircumference, 17)   \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveTicksPerRevolution, 18)   \
-  X(FMW_Result_Error_MessageHandler_Config_NonPositiveLEDUpdatePeriod, 19)      \
-  X(FMW_Result_Error_Command_NotRecognized, 20)                                 \
-  X(FMW_Result_Error_Command_NotAvailable, 21)                                  \
-  X(FMW_Result_COUNT, 22)
+  X(FMW_Result_Error_Hal, 2)                                                    \
+  X(FMW_Result_Error_FaultPinTriggered, 3)                                      \
+  X(FMW_Result_Error_UART_Crc, 4)                                               \
+  X(FMW_Result_Error_UART_NegativeTimeout, 5)                                   \
+  X(FMW_Result_Error_UART_ReceiveTimeoutElapsed, 6)                             \
+  X(FMW_Result_Error_UART_Parity, 7)                                            \
+  X(FMW_Result_Error_UART_Frame, 8)                                             \
+  X(FMW_Result_Error_UART_Noise, 9)                                             \
+  X(FMW_Result_Error_UART_Overrun, 10)                                          \
+  X(FMW_Result_Error_Encoder_InvalidTimer, 11)                                  \
+  X(FMW_Result_Error_Encoder_NonPositiveTicksPerRevolution, 12)                 \
+  X(FMW_Result_Error_Encoder_NonPositiveWheelCircumference, 13)                 \
+  X(FMW_Result_Error_Encoder_GetTick, 14)                                       \
+  X(FMW_Result_Error_Buzzer_Timer, 15)                                          \
+  X(FMW_Result_Error_MessageHandler_InvalidState, 16)                           \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveBaseline, 17)             \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveWheelCircumference, 18)   \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveTicksPerRevolution, 19)   \
+  X(FMW_Result_Error_MessageHandler_Config_NonPositiveLEDUpdatePeriod, 20)      \
+  X(FMW_Result_Error_Command_NotRecognized, 21)                                 \
+  X(FMW_Result_Error_Command_NotAvailable, 22)                                  \
+  X(FMW_Result_COUNT, 23)
 
 typedef uint8_t FMW_Result;
 enum {
