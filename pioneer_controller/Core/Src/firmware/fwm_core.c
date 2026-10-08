@@ -32,6 +32,8 @@ static struct {
   .mode_previous = FMW_Mode_None,
 };
 
+static FMW_Result fmw_result_from_uart_error(void);
+
 // ============================================================
 // Firmware initialization
 FMW_Result fmw_init(const FMW_InitInfo *info) {
@@ -171,7 +173,7 @@ void fmw_uart_message_send(FMW_Message *msg) {
   if (res != HAL_OK) { fmw_emergency_begin(); }
 }
 
-FMW_Result fmw_result_from_uart_error(void) {
+static FMW_Result fmw_result_from_uart_error(void) {
   switch (fmw_state.huart->ErrorCode) {
   case HAL_UART_ERROR_PE: {
     return FMW_Result_Error_UART_Parity;

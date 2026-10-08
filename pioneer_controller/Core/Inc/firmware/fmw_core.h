@@ -95,34 +95,45 @@ typedef struct FMW_InitInfo {
   int32_t encoders_count;
 } FMW_InitInfo;
 
+// NOTE(lb): Initialize the firmware layer. This function must be called in the platform-dependent `main` function before calling into platform-independent code.
 FMW_Result fmw_init(const FMW_InitInfo *info) __attribute__((nonnull, warn_unused_result));
 
+// NOTE(lb): Call this inside the UART receive ISR (HAL_UART_RxCpltCallback in the case of ST HAL).
 void fmw_uart_message_dispatch(void);
+// NOTE(lb): Transmit the provided message over UART using the handle specified during initialization via `fmw_init`.
 void fmw_uart_message_send(FMW_Message *msg) __attribute__((nonnull));
+// NOTE(lb): Call this inside the UART error ISR (HAL_UART_ErrorCallback in the case of ST HAL).
+//           Calling this function will transmit over UART (using the handle specified during initialization via `fmw_init`) a FMW_Message
+//           with the corresponding FMW_Result error value.
 void fmw_uart_error(void);
 
+// NOTE(lb): Switch to emergency mode, stop all motors specified during initialization via `fmw_init`.
+//           After the motors have been stopped, this function call the "emergency begin" callback if it was provided during init.
 void fmw_emergency_begin(void);
+// NOTE(lb): Switch back to the previous mode from emergency mode, re-initialize all motors specified during initialization via `fmw_init`.
+//           After the motors have been re-initialized, this function call the "emergency end" callback if it was provided during init.
 void fmw_emergency_end(void);
+// NOTE(lb): Call this inside a timer update ISR (HAL_TIM_PeriodElapsedCallback in the case of ST HAL).
+//           If more then `wait_at_most_ms_before_emergency` have elapsed since the last UART message was received then automatically trigger emergency-mode.
 void fmw_emergency_timer_update(void);
 
+// NOTE(lb): Get the current state of FSM.
 FMW_Mode fmw_mode_current(void)                 __attribute__((warn_unused_result));
-FMW_Mode fmw_mode_transition(FMW_Mode mode)     __attribute__((warn_unused_result));
-
-FMW_Result fmw_result_from_uart_error(void) __attribute__((warn_unused_result));
+// NOTE(lb): Transition to the new state. If the operation succeeds returns FMW_Result_Ok,
+//           otherwise FMW_Result_Error_InvalidArguments (the only case when this happens is when you give an undefined FMW_Mode).
+FMW_Result fmw_mode_transition(FMW_Mode mode)     __attribute__((warn_unused_result));
 
 FMW_Result fmw_motors_init(void)                                        __attribute__((warn_unused_result));
 FMW_Result fmw_motors_deinit(void)                                      __attribute__((warn_unused_result));
 FMW_Result fmw_motor_set_speed(FMW_Motor *motor, int32_t duty_cycle)    __attribute__((nonnull, warn_unused_result));
 void fmw_motors_stop(void);
 
-FMW_Result fmw_encoders_init(void)                                              __attribute__((nonnull, warn_unused_result));
-FMW_Result fmw_encoders_deinit(void)                                            __attribute__((nonnull, warn_unused_result));
-FMW_Result fmw_encoders_update(void)                                            __attribute__((nonnull, warn_unused_result));
-FMW_Result fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder,
-                                           float meters_traveled,
-                                           float *linear_velocity)              __attribute__((nonnull, warn_unused_result));
-FMW_Result fmw_encoder_count_reset(FMW_Encoder *encoder)                        __attribute__((nonnull, warn_unused_result));
-FMW_Result fmw_encoder_count_get(const FMW_Encoder *encoder, int32_t *ticks)    __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoders_init(void)                                                                                      __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoders_deinit(void)                                                                                    __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoders_update(void)                                                                                    __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoder_get_linear_velocity(const FMW_Encoder *encoder, float meters_traveled, float *linear_velocity)   __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoder_count_reset(FMW_Encoder *encoder)                                                                __attribute__((nonnull, warn_unused_result));
+FMW_Result fmw_encoder_count_get(const FMW_Encoder *encoder, int32_t *ticks)                                            __attribute__((nonnull, warn_unused_result));
 
 void fmw_odometry_pose_update(FMW_Odometry *odometry, float meters_traveled_left, float meters_traveled_right) __attribute__((nonnull));
 
